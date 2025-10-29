@@ -588,6 +588,292 @@
       font-size: 14px;
       opacity: 0.7;
     }
+
+    /* 워크플로우 스타일 */
+    .workflow-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .workflow-header h2 {
+      font-size: 22px;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .workflow-description {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .workflow-controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .workflow-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .workflow-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .workflow-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .workflow-btn.primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .workflow-btn.success {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+    }
+
+    .workflow-steps {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      min-height: 150px;
+      margin-bottom: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .empty-workflow {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .workflow-step {
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 10px;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .workflow-step:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+
+    .workflow-step.executing {
+      border-color: #38ef7d;
+      box-shadow: 0 4px 12px rgba(56, 239, 125, 0.3);
+      animation: pulse 1.5s infinite;
+    }
+
+    .workflow-step.completed {
+      border-color: #38ef7d;
+      opacity: 0.7;
+    }
+
+    .workflow-step.failed {
+      border-color: #ff6b6b;
+      opacity: 0.7;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    .step-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .step-number {
+      background: #667eea;
+      color: white;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .step-title {
+      flex: 1;
+      margin-left: 15px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .step-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .step-action-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 5px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+
+    .step-action-btn:hover {
+      opacity: 1;
+    }
+
+    .step-details {
+      margin-left: 45px;
+      color: #666;
+      font-size: 13px;
+    }
+
+    .step-config-item {
+      margin-top: 5px;
+    }
+
+    .workflow-execution {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .workflow-progress {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .current-step-info {
+      color: #666;
+      font-size: 13px;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    /* 모달 스타일 */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      color: #333;
+      font-size: 18px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #999;
+      line-height: 1;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+    }
+
+    .modal-close:hover {
+      color: #333;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .modal-footer {
+      padding: 15px 20px;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .step-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .step-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .step-config {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #e0e0e0;
+    }
   </style>
 </head>
 <body>
@@ -598,6 +884,7 @@
     <div class="tabs">
       <button class="tab-button active" data-tab="manual">수동 트래킹</button>
       <button class="tab-button" data-tab="auto">자동 분석</button>
+      <button class="tab-button" data-tab="workflow">🔄 워크플로우</button>
     </div>
 
     <!-- 수동 트래킹 탭 -->
@@ -751,6 +1038,116 @@
     </div>
     <!-- 자동 분석 탭 끝 -->
 
+    <!-- 워크플로우 탭 -->
+    <div class="tab-content" id="workflow-tab">
+      <div class="workflow-header">
+        <h2>🔄 워크플로우 빌더</h2>
+        <p class="workflow-description">순차적으로 실행할 작업 단계를 구성하세요</p>
+      </div>
+
+      <div class="workflow-controls">
+        <button id="addStepBtn" class="workflow-btn primary">➕ 단계 추가</button>
+        <button id="saveWorkflowBtn" class="workflow-btn">💾 저장</button>
+        <button id="loadWorkflowBtn" class="workflow-btn">📁 불러오기</button>
+        <button id="clearWorkflowBtn" class="workflow-btn">🗑️ 초기화</button>
+      </div>
+
+      <div id="workflowSteps" class="workflow-steps">
+        <div class="empty-workflow">
+          <p>➕ 단계 추가 버튼을 클릭하여 워크플로우를 만드세요</p>
+        </div>
+      </div>
+
+      <div class="workflow-execution">
+        <button id="runWorkflowBtn" class="workflow-btn success" disabled>▶️ 워크플로우 실행</button>
+        <div id="workflowProgress" class="workflow-progress" style="display: none;">
+          <div class="progress-header">
+            <span class="progress-title">실행 중...</span>
+            <span class="progress-stats" id="workflowProgressStats">단계 0/0</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="workflowProgressFill" style="width: 0%"></div>
+          </div>
+          <div class="current-step-info" id="currentStepInfo">준비 중...</div>
+        </div>
+        <div id="workflowResult"></div>
+      </div>
+
+      <div class="workflow-results" style="display: none;" id="workflowResultsSection">
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">수집된 도메인</div>
+            <div class="stat-value" id="workflowDomainCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">실행 상태</div>
+            <div class="stat-value" id="workflowStatus">대기</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">완료 시각</div>
+            <div class="stat-value" id="workflowCompletedTime">-</div>
+          </div>
+        </div>
+
+        <div class="export-panel">
+          <span class="export-label">내보내기:</span>
+          <button id="exportWorkflowDomainsBtn" class="export-btn" disabled>📋 도메인 목록</button>
+          <button id="exportWorkflowIPsBtn" class="export-btn" disabled>🌐 IP 목록</button>
+          <button id="exportWorkflowDetailedBtn" class="export-btn" disabled>📊 상세 정보</button>
+        </div>
+
+        <div class="domains-section">
+          <div class="domains-header">
+            <span>수집된 도메인 목록</span>
+            <input type="text" class="search-box" id="workflowSearchBox" placeholder="도메인 검색...">
+          </div>
+          <div class="domains-list" id="workflowDomainsList">
+            <div class="empty-state">워크플로우를 실행하세요.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 워크플로우 탭 끝 -->
+
+  </div>
+
+  <!-- 워크플로우 단계 추가 모달 -->
+  <div id="stepModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>워크플로우 단계 추가</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>단계 타입:</label>
+          <select id="stepType" class="step-input">
+            <option value="navigate">🌐 페이지 이동</option>
+            <option value="login">🔐 로그인 대기</option>
+            <option value="crawl">🕷️ 크롤링 실행</option>
+            <option value="wait">⏰ 대기</option>
+            <option value="click">👆 클릭</option>
+            <option value="fill">✏️ 입력</option>
+            <option value="auto-click">🤖 자동 클릭</option>
+            <option value="auto-hover">👋 자동 호버</option>
+            <option value="auto-scroll">📜 자동 스크롤</option>
+            <option value="auto-fill">📝 자동 폼 입력</option>
+            <option value="intelligent">🧠 지능형 탐색</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>단계 이름:</label>
+          <input type="text" id="stepName" class="step-input" placeholder="예: 로그인 페이지 이동">
+        </div>
+        <div id="stepConfig" class="step-config">
+          <!-- 단계 타입별 설정 필드가 동적으로 추가됨 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelStepBtn" class="workflow-btn">취소</button>
+        <button id="saveStepBtn" class="workflow-btn primary">저장</button>
+      </div>
+    </div>
   </div>
 
   <script src="renderer.js"></script>

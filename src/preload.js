@@ -40,5 +40,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 저장된 세션 삭제
   clearSavedSession: () => {
     return ipcRenderer.invoke('clear-saved-session');
+  },
+
+  // 워크플로우 실행
+  runWorkflow: (steps) => {
+    return ipcRenderer.invoke('run-workflow', steps);
   }
 });

@@ -1096,6 +1096,837 @@ class PlaywrightController {
       }
     }
   }
+
+  // 워크플로우 실행
+  async runWorkflow(steps) {
+    console.log('Starting workflow execution with', steps.length, 'steps');
+
+    let browser = null;
+    let context = null;
+    let page = null;
+
+    // 전체 워크플로우에서 수집된 도메인 정보
+    const allDomains = new Map();
+    const allIPs = new Set();
+    const resourceDetails = [];
+    const cdnServices = new Map();
+    const thirdPartyServices = new Map();
+    const resourceStats = {};
+    const protocolStats = { 'http': 0, 'https': 0 };
+
+    try {
+      // 브라우저 시작
+      browser = await chromium.launch({
+        headless: false,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage'
+        ]
+      });
+
+      // 컨텍스트 생성
+      const userDataDir = path.join(os.homedir(), '.domain-tracker-session');
+      context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        viewport: { width: 1920, height: 1080 },
+        ignoreHTTPSErrors: true
+      });
+
+      page = await context.newPage();
+
+      // 리퀘스트 모니터링 설정
+      page.on('request', request => {
+        const url = request.url();
+        const parsedUrl = new URL(url);
+        const domain = parsedUrl.hostname;
+        const resourceType = request.resourceType();
+        const protocol = parsedUrl.protocol.replace(':', '');
+
+        // 프로토콜 통계
+        if (protocol === 'http' || protocol === 'https') {
+          protocolStats[protocol]++;
+        }
+
+        // 리소스 통계
+        resourceStats[resourceType] = (resourceStats[resourceType] || 0) + 1;
+
+        // 도메인 정보 저장
+        if (!allDomains.has(domain)) {
+          allDomains.set(domain, {
+            domain,
+            count: 0,
+            types: new Set(),
+            firstSeen: Date.now(),
+            urlCount: 0,
+            ipv4: [],
+            ipv6: []
+          });
+        }
+
+        const domainInfo = allDomains.get(domain);
+        domainInfo.count++;
+        domainInfo.types.add(resourceType);
+        domainInfo.urlCount++;
+
+        // CDN 감지
+        const cdnName = this.detectCDN(domain, request.headers());
+        if (cdnName) {
+          if (!cdnServices.has(cdnName)) {
+            cdnServices.set(cdnName, { name: cdnName, count: 0, domains: new Set() });
+          }
+          const cdn = cdnServices.get(cdnName);
+          cdn.count++;
+          cdn.domains.add(domain);
+        }
+
+        // 서드파티 서비스 감지
+        const serviceName = this.detectThirdPartyService(domain);
+        if (serviceName) {
+          if (!thirdPartyServices.has(serviceName)) {
+            thirdPartyServices.set(serviceName, { name: serviceName, count: 0, domains: new Set() });
+          }
+          const service = thirdPartyServices.get(serviceName);
+          service.count++;
+          service.domains.add(domain);
+        }
+
+        // 리소스 상세 정보 저장
+        resourceDetails.push({
+          url: url,
+          domain: domain,
+          type: resourceType,
+          size: null,
+          cdn: cdnName,
+          service: serviceName
+        });
+      });
+
+      // 단계별 실행
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        console.log(`Executing step ${i + 1}/${steps.length}: ${step.type} - ${step.name}`);
+
+        try {
+          switch (step.type) {
+            case 'navigate':
+              await this.executeNavigateStep(page, step);
+              break;
+
+            case 'login':
+              await this.executeLoginStep(page, step);
+              break;
+
+            case 'crawl':
+              await this.executeCrawlStep(page, step, allDomains, allIPs);
+              break;
+
+            case 'wait':
+              await this.executeWaitStep(step);
+              break;
+
+            case 'click':
+              await this.executeClickStep(page, step);
+              break;
+
+            case 'fill':
+              await this.executeFillStep(page, step);
+              break;
+
+            case 'auto-click':
+              await this.executeAutoClickStep(page, step);
+              break;
+
+            case 'auto-hover':
+              await this.executeAutoHoverStep(page, step);
+              break;
+
+            case 'auto-scroll':
+              await this.executeAutoScrollStep(page, step);
+              break;
+
+            case 'auto-fill':
+              await this.executeAutoFillStep(page, step);
+              break;
+
+            case 'intelligent':
+              await this.executeIntelligentStep(page, step);
+              break;
+
+            default:
+              console.warn(`Unknown step type: ${step.type}`);
+          }
+
+          console.log(`Step ${i + 1} completed successfully`);
+        } catch (error) {
+          console.error(`Error in step ${i + 1}:`, error);
+          throw new Error(`Step ${i + 1} (${step.name}) failed: ${error.message}`);
+        }
+      }
+
+      // DNS 해석 (IP 수집)
+      for (const [domain, info] of allDomains) {
+        try {
+          const addresses = await dns.promises.resolve(domain);
+          addresses.forEach(ip => {
+            allIPs.add(ip);
+            if (ip.includes(':')) {
+              info.ipv6.push(ip);
+            } else {
+              info.ipv4.push(ip);
+            }
+          });
+        } catch (error) {
+          // DNS 해석 실패는 무시
+        }
+      }
+
+      // 결과 반환
+      const domainList = Array.from(allDomains.values()).map(info => ({
+        ...info,
+        types: Array.from(info.types)
+      })).sort((a, b) => b.count - a.count);
+
+      const cdnList = Array.from(cdnServices.values()).map(cdn => ({
+        ...cdn,
+        domains: Array.from(cdn.domains)
+      }));
+
+      const serviceList = Array.from(thirdPartyServices.values()).map(service => ({
+        ...service,
+        domains: Array.from(service.domains)
+      }));
+
+      return {
+        success: true,
+        totalDomains: domainList.length,
+        totalIPs: allIPs.size,
+        totalCDNs: cdnList.length,
+        totalServices: serviceList.length,
+        totalResources: resourceDetails.length,
+        domains: domainList,
+        allIPs: Array.from(allIPs).sort(),
+        cdnServices: cdnList,
+        thirdPartyServices: serviceList,
+        resourceDetails: resourceDetails,
+        resourceStats: resourceStats,
+        protocolStats: protocolStats
+      };
+
+    } catch (error) {
+      console.error('Workflow execution error:', error);
+      return {
+        success: false,
+        error: error.message,
+        domains: [],
+        allIPs: []
+      };
+    } finally {
+      // 정리
+      try {
+        if (page) await page.close().catch(() => {});
+        if (context) await context.close().catch(() => {});
+        if (browser) await browser.close().catch(() => {});
+      } catch (error) {
+        console.error('Error during workflow cleanup:', error);
+      }
+    }
+  }
+
+  // 워크플로우 단계 실행 메소드들
+
+  async executeNavigateStep(page, step) {
+    const url = step.config.url;
+    const wait = parseInt(step.config.wait) || 5;
+
+    console.log(`Navigating to ${url}`);
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.waitForTimeout(wait * 1000);
+    console.log('Navigation complete');
+  }
+
+  async executeLoginStep(page, step) {
+    const maxWait = parseInt(step.config.maxWait) || 120;
+
+    console.log(`Waiting for manual login (max ${maxWait} seconds)`);
+    console.log('User should complete login in the browser window');
+
+    // 여기서는 간단히 대기만 합니다
+    // 실제로는 BrowserWindow를 통해 사용자에게 로그인 완료 신호를 받아야 하지만
+    // 워크플로우에서는 자동으로 maxWait 시간만큼 대기합니다
+    await page.waitForTimeout(maxWait * 1000);
+
+    console.log('Login wait period complete');
+  }
+
+  async executeCrawlStep(page, step, allDomains, allIPs) {
+    const depth = parseInt(step.config.depth) || 1;
+    const sameDomain = step.config.sameDomain !== false;
+    const wait = parseInt(step.config.wait) || 5;
+
+    console.log(`Crawling with depth ${depth}, sameDomain: ${sameDomain}`);
+
+    const currentUrl = page.url();
+    const baseHostname = new URL(currentUrl).hostname;
+
+    // 현재 페이지 크롤링
+    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(wait * 1000);
+
+    if (depth > 0) {
+      // 링크 추출 및 크롤링
+      const visitedUrls = new Set([currentUrl]);
+      await this.crawlPage(page, currentUrl, depth, sameDomain, baseHostname, visitedUrls, wait);
+    }
+
+    console.log('Crawl complete');
+  }
+
+  async executeWaitStep(step) {
+    const duration = parseInt(step.config.duration) || 5;
+    console.log(`Waiting for ${duration} seconds`);
+    await new Promise(resolve => setTimeout(resolve, duration * 1000));
+    console.log('Wait complete');
+  }
+
+  async executeClickStep(page, step) {
+    const selector = step.config.selector;
+    const wait = parseInt(step.config.wait) || 2;
+
+    console.log(`Clicking element: ${selector}`);
+
+    try {
+      await page.waitForSelector(selector, { timeout: 10000 });
+      await page.click(selector);
+      await page.waitForTimeout(wait * 1000);
+      console.log('Click complete');
+    } catch (error) {
+      throw new Error(`Failed to click ${selector}: ${error.message}`);
+    }
+  }
+
+  async executeFillStep(page, step) {
+    const selector = step.config.selector;
+    const value = step.config.value;
+
+    console.log(`Filling ${selector} with value`);
+
+    try {
+      await page.waitForSelector(selector, { timeout: 10000 });
+      await page.fill(selector, value);
+      console.log('Fill complete');
+    } catch (error) {
+      throw new Error(`Failed to fill ${selector}: ${error.message}`);
+    }
+  }
+
+  // 자동 클릭 단계 실행
+  async executeAutoClickStep(page, step) {
+    const maxClicks = parseInt(step.config.maxClicks) || 50;
+    const clickDelay = parseInt(step.config.clickDelay) || 500;
+    const excludeSelectors = step.config.excludeSelectors ?
+      step.config.excludeSelectors.split(',').map(s => s.trim()).filter(s => s) :
+      ['.logout', '.delete', '.close', '[href*="logout"]', '[href*="signout"]'];
+
+    console.log(`Auto-clicking elements (max: ${maxClicks}, delay: ${clickDelay}ms)`);
+
+    try {
+      const clickedElements = new Set();
+      let clickCount = 0;
+
+      // 클릭 가능한 모든 요소 찾기
+      const clickableSelectors = [
+        'button:not([disabled])',
+        'a[href]',
+        '[role="button"]',
+        '[onclick]',
+        '.btn',
+        '.button',
+        'input[type="submit"]',
+        'input[type="button"]'
+      ];
+
+      for (const selector of clickableSelectors) {
+        if (clickCount >= maxClicks) break;
+
+        const elements = await page.$$(selector);
+
+        for (const element of elements) {
+          if (clickCount >= maxClicks) break;
+
+          try {
+            // 제외 선택자 체크
+            let shouldSkip = false;
+            for (const excludeSelector of excludeSelectors) {
+              const matches = await element.evaluate((el, sel) => {
+                try {
+                  return el.matches(sel);
+                } catch {
+                  return false;
+                }
+              }, excludeSelector);
+
+              if (matches) {
+                shouldSkip = true;
+                break;
+              }
+            }
+
+            if (shouldSkip) continue;
+
+            // 요소가 보이는지 확인
+            const isVisible = await element.isVisible();
+            if (!isVisible) continue;
+
+            // 이미 클릭한 요소인지 체크 (DOM 경로로)
+            const elementPath = await element.evaluate(el => {
+              const path = [];
+              let current = el;
+              while (current && current !== document.body) {
+                let selector = current.tagName.toLowerCase();
+                if (current.id) selector += '#' + current.id;
+                if (current.className) selector += '.' + current.className.split(' ').join('.');
+                path.unshift(selector);
+                current = current.parentElement;
+              }
+              return path.join(' > ');
+            });
+
+            if (clickedElements.has(elementPath)) continue;
+
+            // 클릭 시도
+            await element.click({ timeout: 3000 }).catch(() => {});
+            clickedElements.add(elementPath);
+            clickCount++;
+
+            console.log(`Clicked element ${clickCount}/${maxClicks}`);
+            await page.waitForTimeout(clickDelay);
+
+          } catch (error) {
+            // 개별 클릭 실패는 무시하고 계속
+            console.log(`Failed to click element, continuing...`);
+          }
+        }
+      }
+
+      console.log(`Auto-click complete: ${clickCount} elements clicked`);
+    } catch (error) {
+      console.error('Auto-click error:', error);
+      throw new Error(`Auto-click failed: ${error.message}`);
+    }
+  }
+
+  // 자동 호버 단계 실행
+  async executeAutoHoverStep(page, step) {
+    const hoverSelector = step.config.hoverSelector || '.menu, .dropdown, nav';
+    const hoverDuration = parseInt(step.config.hoverDuration) || 1000;
+    const maxHovers = parseInt(step.config.maxHovers) || 20;
+
+    console.log(`Auto-hovering elements (selectors: ${hoverSelector}, duration: ${hoverDuration}ms)`);
+
+    try {
+      const selectors = hoverSelector.split(',').map(s => s.trim()).filter(s => s);
+      let hoverCount = 0;
+
+      for (const selector of selectors) {
+        if (hoverCount >= maxHovers) break;
+
+        const elements = await page.$$(selector);
+
+        for (const element of elements) {
+          if (hoverCount >= maxHovers) break;
+
+          try {
+            const isVisible = await element.isVisible();
+            if (!isVisible) continue;
+
+            await element.hover({ timeout: 3000 });
+            hoverCount++;
+
+            console.log(`Hovered element ${hoverCount}/${maxHovers}`);
+            await page.waitForTimeout(hoverDuration);
+
+            // 호버로 나타난 요소들이 로드될 시간 추가 대기
+            await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+
+          } catch (error) {
+            console.log(`Failed to hover element, continuing...`);
+          }
+        }
+      }
+
+      console.log(`Auto-hover complete: ${hoverCount} elements hovered`);
+    } catch (error) {
+      console.error('Auto-hover error:', error);
+      throw new Error(`Auto-hover failed: ${error.message}`);
+    }
+  }
+
+  // 자동 스크롤 단계 실행
+  async executeAutoScrollStep(page, step) {
+    const scrollMethod = step.config.scrollMethod || 'smooth';
+    const scrollDelay = parseInt(step.config.scrollDelay) || 1000;
+    const maxScrolls = parseInt(step.config.maxScrolls) || 10;
+
+    console.log(`Auto-scrolling (method: ${scrollMethod}, delay: ${scrollDelay}ms)`);
+
+    try {
+      let scrollCount = 0;
+      let previousHeight = 0;
+
+      while (scrollCount < maxScrolls) {
+        const currentHeight = await page.evaluate(() => document.body.scrollHeight);
+
+        if (currentHeight === previousHeight && scrollCount > 0) {
+          console.log('Reached end of page');
+          break;
+        }
+
+        previousHeight = currentHeight;
+
+        if (scrollMethod === 'smooth') {
+          // 부드러운 스크롤
+          await page.evaluate(() => {
+            window.scrollBy({
+              top: window.innerHeight * 0.8,
+              behavior: 'smooth'
+            });
+          });
+        } else if (scrollMethod === 'step') {
+          // 단계별 스크롤
+          await page.evaluate(() => {
+            window.scrollBy(0, window.innerHeight);
+          });
+        } else if (scrollMethod === 'full') {
+          // 전체 스크롤
+          await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+          });
+        }
+
+        scrollCount++;
+        console.log(`Scrolled ${scrollCount}/${maxScrolls}`);
+
+        await page.waitForTimeout(scrollDelay);
+        await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+      }
+
+      // 맨 위로 스크롤
+      await page.evaluate(() => window.scrollTo(0, 0));
+
+      console.log(`Auto-scroll complete: ${scrollCount} scrolls performed`);
+    } catch (error) {
+      console.error('Auto-scroll error:', error);
+      throw new Error(`Auto-scroll failed: ${error.message}`);
+    }
+  }
+
+  // 자동 폼 입력 단계 실행
+  async executeAutoFillStep(page, step) {
+    const formDataStr = step.config.formData || '{}';
+    const fillVisible = step.config.fillVisible !== false;
+    const wait = parseInt(step.config.wait) || 2;
+
+    console.log(`Auto-filling forms (visible only: ${fillVisible})`);
+
+    try {
+      let formData = {};
+      try {
+        formData = JSON.parse(formDataStr);
+      } catch (e) {
+        console.warn('Invalid JSON for form data, using sample data');
+        formData = {
+          name: 'Test User',
+          email: 'test@example.com',
+          username: 'testuser',
+          password: 'Test123!',
+          phone: '010-1234-5678',
+          message: 'This is a test message'
+        };
+      }
+
+      // 모든 input 필드 찾기
+      const inputs = await page.$$('input:not([type="hidden"]):not([type="submit"]):not([type="button"])');
+
+      for (const input of inputs) {
+        try {
+          if (fillVisible) {
+            const isVisible = await input.isVisible();
+            if (!isVisible) continue;
+          }
+
+          const type = await input.getAttribute('type');
+          const name = await input.getAttribute('name');
+          const id = await input.getAttribute('id');
+          const placeholder = await input.getAttribute('placeholder');
+
+          // 적절한 값 찾기
+          let value = '';
+
+          if (name && formData[name]) {
+            value = formData[name];
+          } else if (id && formData[id]) {
+            value = formData[id];
+          } else {
+            // 타입/이름/placeholder 기반으로 추측
+            const fieldText = `${name} ${id} ${placeholder}`.toLowerCase();
+
+            if (fieldText.includes('email') || type === 'email') {
+              value = formData.email || 'test@example.com';
+            } else if (fieldText.includes('name')) {
+              value = formData.name || 'Test User';
+            } else if (fieldText.includes('user')) {
+              value = formData.username || 'testuser';
+            } else if (fieldText.includes('pass') || type === 'password') {
+              value = formData.password || 'Test123!';
+            } else if (fieldText.includes('phone') || fieldText.includes('tel') || type === 'tel') {
+              value = formData.phone || '010-1234-5678';
+            } else if (type === 'number') {
+              value = '123';
+            } else if (type === 'date') {
+              value = '2024-01-01';
+            } else if (type === 'checkbox') {
+              await input.check();
+              continue;
+            } else if (type === 'radio') {
+              await input.check();
+              continue;
+            } else {
+              value = formData[Object.keys(formData)[0]] || 'test';
+            }
+          }
+
+          if (value && type !== 'checkbox' && type !== 'radio') {
+            await input.fill(String(value));
+            console.log(`Filled field: ${name || id || type}`);
+          }
+
+        } catch (error) {
+          console.log(`Failed to fill input, continuing...`);
+        }
+      }
+
+      // textarea 처리
+      const textareas = await page.$$('textarea');
+      for (const textarea of textareas) {
+        try {
+          if (fillVisible) {
+            const isVisible = await textarea.isVisible();
+            if (!isVisible) continue;
+          }
+
+          const value = formData.message || 'This is a test message';
+          await textarea.fill(value);
+          console.log('Filled textarea');
+        } catch (error) {
+          console.log(`Failed to fill textarea, continuing...`);
+        }
+      }
+
+      // select 처리
+      const selects = await page.$$('select');
+      for (const select of selects) {
+        try {
+          if (fillVisible) {
+            const isVisible = await select.isVisible();
+            if (!isVisible) continue;
+          }
+
+          const options = await select.$$('option');
+          if (options.length > 1) {
+            await select.selectOption({ index: 1 });
+            console.log('Selected option');
+          }
+        } catch (error) {
+          console.log(`Failed to select option, continuing...`);
+        }
+      }
+
+      await page.waitForTimeout(wait * 1000);
+      console.log('Auto-fill complete');
+
+    } catch (error) {
+      console.error('Auto-fill error:', error);
+      throw new Error(`Auto-fill failed: ${error.message}`);
+    }
+  }
+
+  // 지능형 탐색 단계 실행
+  async executeIntelligentStep(page, step) {
+    const exploreDepth = parseInt(step.config.exploreDepth) || 2;
+    const maxTimePerElement = parseInt(step.config.maxTimePerElement) || 3;
+    const avoidLogout = step.config.avoidLogout !== false;
+    const clickButtons = step.config.clickButtons !== false;
+    const hoverMenus = step.config.hoverMenus !== false;
+
+    console.log(`Intelligent exploration (depth: ${exploreDepth}, max time per element: ${maxTimePerElement}s)`);
+
+    try {
+      const exploredElements = new Set();
+
+      // 로그아웃/위험 패턴
+      const dangerousPatterns = avoidLogout ? [
+        'logout', 'log-out', 'signout', 'sign-out', 'exit',
+        'delete', 'remove', 'cancel', 'close-account'
+      ] : [];
+
+      for (let depth = 0; depth < exploreDepth; depth++) {
+        console.log(`Exploration depth ${depth + 1}/${exploreDepth}`);
+
+        // 1. 메뉴 호버
+        if (hoverMenus) {
+          const menuSelectors = ['nav', '.menu', '.dropdown', '[role="menu"]', 'header'];
+          for (const selector of menuSelectors) {
+            const elements = await page.$$(selector);
+            for (const el of elements.slice(0, 5)) {
+              try {
+                const isVisible = await el.isVisible();
+                if (isVisible) {
+                  await el.hover({ timeout: 2000 });
+                  await page.waitForTimeout(800);
+                }
+              } catch (e) {
+                // 무시
+              }
+            }
+          }
+        }
+
+        // 2. 중요 버튼 클릭
+        if (clickButtons) {
+          const buttonSelectors = [
+            'button:not([disabled])',
+            '.btn:not(.btn-danger)',
+            '[role="button"]',
+            'a.button'
+          ];
+
+          for (const selector of buttonSelectors) {
+            const buttons = await page.$$(selector);
+
+            for (const btn of buttons.slice(0, 10)) {
+              try {
+                const isVisible = await btn.isVisible();
+                if (!isVisible) continue;
+
+                // 텍스트로 위험 버튼 체크
+                const text = await btn.textContent();
+                const isDangerous = dangerousPatterns.some(pattern =>
+                  text.toLowerCase().includes(pattern)
+                );
+
+                if (isDangerous) {
+                  console.log(`Skipping dangerous button: ${text}`);
+                  continue;
+                }
+
+                // 요소 경로 생성
+                const elementPath = await btn.evaluate(el => {
+                  const path = [];
+                  let current = el;
+                  while (current && current !== document.body) {
+                    let selector = current.tagName.toLowerCase();
+                    if (current.id) selector += '#' + current.id;
+                    path.unshift(selector);
+                    current = current.parentElement;
+                  }
+                  return path.join('>');
+                });
+
+                if (exploredElements.has(elementPath)) continue;
+
+                // 클릭
+                await btn.click({ timeout: maxTimePerElement * 1000 }).catch(() => {});
+                exploredElements.add(elementPath);
+
+                await page.waitForTimeout(1000);
+                await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+
+              } catch (e) {
+                // 개별 실패 무시
+              }
+            }
+          }
+        }
+
+        // 3. 스크롤하여 레이지 로딩 트리거
+        await page.evaluate(() => {
+          window.scrollBy(0, window.innerHeight);
+        });
+        await page.waitForTimeout(1000);
+
+        // 4. 네트워크가 안정될 때까지 대기
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      }
+
+      // 원래 위치로 스크롤
+      await page.evaluate(() => window.scrollTo(0, 0));
+
+      console.log(`Intelligent exploration complete: ${exploredElements.size} elements explored`);
+
+    } catch (error) {
+      console.error('Intelligent exploration error:', error);
+      throw new Error(`Intelligent exploration failed: ${error.message}`);
+    }
+  }
+
+  // 크롤링 헬퍼 메소드 (재귀적 크롤링)
+  async crawlPage(page, url, remainingDepth, sameDomain, baseHostname, visitedUrls, wait) {
+    if (remainingDepth <= 0) return;
+
+    try {
+      // 현재 페이지의 링크 추출
+      const links = await page.evaluate(() => {
+        const foundLinks = new Set();
+        const anchors = Array.from(document.querySelectorAll('a[href]'));
+
+        anchors.forEach(a => {
+          try {
+            const href = a.href;
+            if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+              foundLinks.add(href);
+            }
+          } catch (e) {
+            // 무시
+          }
+        });
+
+        return Array.from(foundLinks);
+      });
+
+      console.log(`Found ${links.length} links at depth ${remainingDepth}`);
+
+      // 각 링크 탐색
+      for (const link of links.slice(0, 10)) { // 최대 10개 링크만
+        if (visitedUrls.has(link)) continue;
+
+        try {
+          const linkUrl = new URL(link);
+
+          // 같은 도메인 체크
+          if (sameDomain && linkUrl.hostname !== baseHostname) {
+            continue;
+          }
+
+          visitedUrls.add(link);
+          console.log(`Crawling: ${link}`);
+
+          await page.goto(link, { waitUntil: 'networkidle', timeout: 30000 });
+          await page.waitForTimeout(wait * 1000);
+
+          // 재귀 크롤링
+          await this.crawlPage(page, link, remainingDepth - 1, sameDomain, baseHostname, visitedUrls, wait);
+
+        } catch (error) {
+          console.log(`Failed to crawl ${link}:`, error.message);
+          continue;
+        }
+      }
+
+    } catch (error) {
+      console.error('Error during crawl:', error);
+    }
+  }
 }
 
 module.exports = PlaywrightController;

@@ -114,6 +114,22 @@ class DomainTracker {
         return { success: false, error: error.message };
       }
     });
+
+    // 워크플로우 실행
+    ipcMain.handle('run-workflow', async (event, steps) => {
+      try {
+        const result = await this.playwrightController.runWorkflow(steps);
+        return result;
+      } catch (error) {
+        console.error('Error running workflow:', error);
+        return {
+          success: false,
+          error: error.message,
+          domains: [],
+          allIPs: []
+        };
+      }
+    });
   }
 
   async init() {
