@@ -30,7 +30,16 @@
       "Bash(if exist \"C:\\Users\\genians_test\\WebstormProjects\\scrapSNI\\dist\\Domain Tracker-win32-x64\\Domain Tracker.exe\" echo Build successful - executable found)",
       "Bash(powershell Compress-Archive:*)",
       "Bash(if exist \"C:\\Users\\genians_test\\WebstormProjects\\scrapSNI\\dist\\Domain Tracker-win32-x64\\resources\\app\\nul\" del /f /q \"C:\\Users\\genians_test\\WebstormProjects\\scrapSNI\\dist\\Domain Tracker-win32-x64\\resources\\app\\nul\")",
-      "Bash(cmd /c \"taskkill /F /IM electron.exe /T\")"
+      "Bash(cmd /c \"taskkill /F /IM electron.exe /T\")",
+      "Bash(mkdir:*)",
+      "Bash(npm run build:mac:*)",
+      "Bash(npm cache clean:*)",
+      "Bash(npm run compile:*)",
+      "Bash(open:*)",
+      "Bash(pkill:*)",
+      "Read(//private/tmp/**)",
+      "Bash(kill:*)",
+      "Bash(npm run build:mac:arm:*)"
     ],
     "deny": [],
     "ask": []

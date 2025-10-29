@@ -2,10 +2,15 @@
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const exportDomainsBtn = document.getElementById('exportDomainsBtn');
+const exportIPsBtn = document.getElementById('exportIPsBtn');
+const exportSNIWhitelistBtn = document.getElementById('exportSNIWhitelistBtn');
 const exportDetailedBtn = document.getElementById('exportDetailedBtn');
 const clearBtn = document.getElementById('clearBtn');
 const domainsList = document.getElementById('domainsList');
+const ipsList = document.getElementById('ipsList');
 const domainCount = document.getElementById('domainCount');
+const ipCount = document.getElementById('ipCount');
+const ipSearchBox = document.getElementById('ipSearchBox');
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
 const elapsedTime = document.getElementById('elapsedTime');
@@ -34,6 +39,7 @@ const autoStatus = document.getElementById('autoStatus');
 const lastAnalysis = document.getElementById('lastAnalysis');
 const exportAutoDomainsBtn = document.getElementById('exportAutoDomainsBtn');
 const exportAutoIPsBtn = document.getElementById('exportAutoIPsBtn');
+const exportAutoSNIWhitelistBtn = document.getElementById('exportAutoSNIWhitelistBtn');
 const exportAutoDetailedBtn = document.getElementById('exportAutoDetailedBtn');
 const clearAutoBtn = document.getElementById('clearAutoBtn');
 const autoDomainsList = document.getElementById('autoDomainsList');
@@ -42,6 +48,7 @@ const autoSearchBox = document.getElementById('autoSearchBox');
 // 상태 변수들 - 수동 트래킹
 let isTracking = false;
 let domains = [];
+let ips = [];
 let startTime = null;
 let timerInterval = null;
 let updateInterval = null;
@@ -70,14 +77,18 @@ function initializeEventListeners() {
   startBtn.addEventListener('click', startTracking);
   stopBtn.addEventListener('click', stopTracking);
   exportDomainsBtn.addEventListener('click', exportDomainsList);
+  exportIPsBtn.addEventListener('click', exportIPsList);
+  exportSNIWhitelistBtn.addEventListener('click', exportSNIWhitelist);
   exportDetailedBtn.addEventListener('click', exportDomainsDetailed);
   clearBtn.addEventListener('click', clearDomains);
   searchBox.addEventListener('input', filterDomains);
+  ipSearchBox.addEventListener('input', filterIPs);
 
   // 자동 분석 탭
   analyzeBtn.addEventListener('click', analyzeUrl);
   exportAutoDomainsBtn.addEventListener('click', exportAutoDomainsList);
   exportAutoIPsBtn.addEventListener('click', exportAutoIPsList);
+  exportAutoSNIWhitelistBtn.addEventListener('click', exportAutoSNIWhitelist);
   exportAutoDetailedBtn.addEventListener('click', exportAutoDomainsDetailed);
   clearAutoBtn.addEventListener('click', clearAutoDomains);
   autoSearchBox.addEventListener('input', filterAutoDomains);
@@ -118,6 +129,7 @@ function initializeEventListeners() {
   workflowSearchBox.addEventListener('input', filterWorkflowDomains);
   exportWorkflowDomainsBtn.addEventListener('click', exportWorkflowDomains);
   exportWorkflowIPsBtn.addEventListener('click', exportWorkflowIPs);
+  exportWorkflowSNIWhitelistBtn.addEventListener('click', exportWorkflowSNIWhitelist);
   exportWorkflowDetailedBtn.addEventListener('click', exportWorkflowDetailed);
 }
 
@@ -132,6 +144,7 @@ async function startTracking() {
     if (result.success) {
       isTracking = true;
       domains = [];
+      ips = [];
       startTime = Date.now();
       updateUI();
       startTimer();
@@ -176,8 +189,36 @@ async function stopTracking() {
   }
 }
 
+// ==================== 파일 저장 유틸리티 ====================
+
+/**
+ * 파일 저장 다이얼로그를 열고 파일을 저장합니다.
+ *
+ * @param {string} defaultFilename - 기본 파일명
+ * @param {string} content - 저장할 내용
+ * @param {string} successMessage - 성공 시 표시할 메시지
+ */
+async function saveFileWithDialog(defaultFilename, content, successMessage) {
+  try {
+    const result = await window.electronAPI.saveFile(defaultFilename, content);
+
+    if (result.success) {
+      alert(`${successMessage}\n\n파일 위치: ${result.filePath}`);
+    } else if (result.canceled) {
+      // 사용자가 취소한 경우 - 아무것도 하지 않음
+    } else {
+      alert(`파일 저장 실패:\n${result.error}`);
+    }
+  } catch (error) {
+    console.error('Error saving file:', error);
+    alert(`파일 저장 중 오류 발생:\n${error.message}`);
+  }
+}
+
+// ==================== 수동 트래킹 내보내기 함수 ====================
+
 // 도메인 목록만 내보내기 (수동 트래킹)
-function exportDomainsList() {
+async function exportDomainsList() {
   if (domains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -187,19 +228,15 @@ function exportDomainsList() {
   const filename = `domains-whitelist-${timestamp}.txt`;
   const content = domains.map(d => d.domain).join('\n');
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}\n\n총 ${domains.length}개의 도메인`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `총 ${domains.length}개의 도메인이 저장되었습니다.`
+  );
 }
 
 // 상세 정보 내보내기 (수동 트래킹)
-function exportDomainsDetailed() {
+async function exportDomainsDetailed() {
   if (domains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -221,15 +258,11 @@ function exportDomainsDetailed() {
     content += '\n';
   });
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}`
+  );
 }
 
 // 도메인 목록 초기화
@@ -260,8 +293,11 @@ function updateUI() {
   startBtn.disabled = isTracking;
   stopBtn.disabled = !isTracking;
   const hasData = domains.length > 0;
+  const hasAnyData = domains.length > 0 || ips.length > 0;
   exportDomainsBtn.disabled = !hasData;
   exportDetailedBtn.disabled = !hasData;
+  exportIPsBtn.disabled = ips.length === 0;
+  exportSNIWhitelistBtn.disabled = !hasAnyData;
 
   // 상태 표시기 업데이트
   statusIndicator.className = `status-indicator ${isTracking ? 'active' : 'inactive'}`;
@@ -272,6 +308,16 @@ function updateUI() {
 
   // 도메인 목록 표시
   displayDomains(domains);
+
+  // IP 목록 표시
+  displayIPs(ips);
+  updateIPCount();
+
+  // CDN 및 서드파티 서비스 표시
+  const cdnServices = aggregateCDNServices(domains);
+  const thirdPartyServices = aggregateThirdPartyServices(domains);
+  displayCDNServices(cdnServices);
+  displayThirdPartyServices(thirdPartyServices);
 }
 
 // 도메인 목록 표시
@@ -302,6 +348,18 @@ function displayDomains(domainsToShow) {
       typeIcons[type] || '📦'
     ).join(' ');
 
+    // CDN, 서드파티, WebSocket 뱃지 생성
+    let badges = '';
+    if (domainInfo.isCDN) {
+      badges += `<span class="badge badge-cdn" title="CDN: ${domainInfo.cdnName}">🌐 ${domainInfo.cdnName}</span>`;
+    }
+    if (domainInfo.isThirdParty) {
+      badges += `<span class="badge badge-third-party" title="서드파티: ${domainInfo.thirdPartyName}">🔌 ${domainInfo.thirdPartyName}</span>`;
+    }
+    if (domainInfo.isWebSocket) {
+      badges += `<span class="badge badge-websocket" title="WebSocket 연결">⚡ WebSocket</span>`;
+    }
+
     return `
       <div class="domain-item">
         <div class="domain-main">
@@ -309,6 +367,268 @@ function displayDomains(domainsToShow) {
           <div class="domain-meta">
             <span class="domain-types" title="${domainInfo.types.join(', ')}">${typesDisplay}</span>
             <span class="domain-count" title="총 요청 수">${domainInfo.count} 요청</span>
+            ${badges}
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// IP 목록 표시
+function displayIPs(ipsToShow = ips) {
+  if (ipsToShow.length === 0) {
+    ipsList.innerHTML = `
+      <div class="empty-state">
+        ${isTracking ? '접속한 IP가 수집되면 여기에 표시됩니다...' : 'IP 주소가 없습니다.'}
+      </div>
+    `;
+    return;
+  }
+
+  ipsList.innerHTML = ipsToShow.map((ip, index) => {
+    // IPv4 vs IPv6 감지
+    const isIPv6 = ip.includes(':');
+    const icon = isIPv6 ? '🌐' : '🔵';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">${icon} ${ip}</span>
+          <div class="domain-meta">
+            <span class="domain-types">${isIPv6 ? 'IPv6' : 'IPv4'}</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// IP 개수 업데이트
+function updateIPCount() {
+  ipCount.textContent = ips.length;
+}
+
+// IP 목록 필터링
+function filterIPs() {
+  const searchTerm = ipSearchBox.value.toLowerCase();
+  displayIPs(ips.filter(ip => ip.toLowerCase().includes(searchTerm)));
+}
+
+// IP 목록 저장
+async function exportIPsList() {
+  if (ips.length === 0) {
+    alert('내보낼 IP가 없습니다.');
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `ips-whitelist-${timestamp}.txt`;
+  const content = ips.join('\n');
+
+  await saveFileWithDialog(
+    filename,
+    content,
+    `총 ${ips.length}개의 IP 주소가 저장되었습니다.`
+  );
+}
+
+// SNI 화이트리스트 저장 (수동 트래킹)
+async function exportSNIWhitelist() {
+  if (domains.length === 0 && ips.length === 0) {
+    alert('내보낼 데이터가 없습니다.');
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `sni-whitelist-${timestamp}.txt`;
+
+  // 카테고리별로 도메인 분류
+  const mainDomains = [];
+  const cdnDomains = [];
+  const thirdPartyDomains = [];
+  const websocketDomains = [];
+
+  domains.forEach(d => {
+    if (d.isWebSocket) {
+      websocketDomains.push(d.domain);
+    }
+    if (d.isCDN) {
+      cdnDomains.push(`${d.domain} # ${d.cdnName}`);
+    } else if (d.isThirdParty) {
+      thirdPartyDomains.push(`${d.domain} # ${d.thirdPartyName}`);
+    } else if (!d.isWebSocket) {
+      mainDomains.push(d.domain);
+    }
+  });
+
+  let content = '===== SNI 필터링 화이트리스트 =====\n';
+  content += `생성일시: ${new Date().toLocaleString('ko-KR')}\n`;
+  content += `총 도메인: ${domains.length}개 | 총 IP: ${ips.length}개\n`;
+  content += '=========================================\n\n';
+
+  // 주요 도메인
+  if (mainDomains.length > 0) {
+    content += '# 주요 도메인 (Main Domains)\n';
+    content += mainDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // CDN 도메인
+  if (cdnDomains.length > 0) {
+    content += '# CDN 도메인 (CDN Domains)\n';
+    content += cdnDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // 서드파티 도메인
+  if (thirdPartyDomains.length > 0) {
+    content += '# 서드파티 서비스 (Third-party Services)\n';
+    content += thirdPartyDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // WebSocket 도메인
+  if (websocketDomains.length > 0) {
+    content += '# WebSocket 연결 (WebSocket Connections)\n';
+    content += websocketDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // IP 주소
+  if (ips.length > 0) {
+    const ipv4List = ips.filter(ip => !ip.includes(':'));
+    const ipv6List = ips.filter(ip => ip.includes(':'));
+
+    content += '# IP 주소 화이트리스트 (Trusted IP Addresses)\n';
+    content += '# SNI Hello에서 도메인이 보이지 않을 때 신뢰할 수 있는 서버\n\n';
+
+    if (ipv4List.length > 0) {
+      content += '## IPv4 주소\n';
+      content += ipv4List.join('\n');
+      content += '\n\n';
+    }
+
+    if (ipv6List.length > 0) {
+      content += '## IPv6 주소\n';
+      content += ipv6List.join('\n');
+      content += '\n\n';
+    }
+  }
+
+  await saveFileWithDialog(
+    filename,
+    content,
+    `SNI 화이트리스트가 저장되었습니다.\n\n도메인: ${domains.length}개\nIP: ${ips.length}개`
+  );
+}
+
+// ==================== CDN 및 서드파티 서비스 관련 ====================
+
+// CDN 서비스 집계
+function aggregateCDNServices(domainList) {
+  const cdnMap = new Map();
+
+  domainList.forEach(domainInfo => {
+    if (domainInfo.isCDN && domainInfo.cdnName) {
+      if (!cdnMap.has(domainInfo.cdnName)) {
+        cdnMap.set(domainInfo.cdnName, {
+          name: domainInfo.cdnName,
+          domains: [],
+          count: 0
+        });
+      }
+      const cdnInfo = cdnMap.get(domainInfo.cdnName);
+      cdnInfo.domains.push(domainInfo.domain);
+      cdnInfo.count += domainInfo.count;
+    }
+  });
+
+  return Array.from(cdnMap.values()).sort((a, b) => b.count - a.count);
+}
+
+// 서드파티 서비스 집계
+function aggregateThirdPartyServices(domainList) {
+  const serviceMap = new Map();
+
+  domainList.forEach(domainInfo => {
+    if (domainInfo.isThirdParty && domainInfo.thirdPartyName) {
+      if (!serviceMap.has(domainInfo.thirdPartyName)) {
+        serviceMap.set(domainInfo.thirdPartyName, {
+          name: domainInfo.thirdPartyName,
+          domains: [],
+          count: 0
+        });
+      }
+      const serviceInfo = serviceMap.get(domainInfo.thirdPartyName);
+      serviceInfo.domains.push(domainInfo.domain);
+      serviceInfo.count += domainInfo.count;
+    }
+  });
+
+  return Array.from(serviceMap.values()).sort((a, b) => b.count - a.count);
+}
+
+// CDN 서비스 목록 표시
+function displayCDNServices(cdnServices) {
+  const cdnList = document.getElementById('cdnList');
+  if (!cdnList) return;
+
+  if (cdnServices.length === 0) {
+    cdnList.innerHTML = `
+      <div class="empty-state">
+        CDN 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  cdnList.innerHTML = cdnServices.map((cdn, index) => {
+    const domainsPreview = cdn.domains.slice(0, 3).join(', ');
+    const moreCount = cdn.domains.length > 3 ? ` +${cdn.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🌐 ${cdn.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${cdn.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${cdn.count} 요청 (${cdn.domains.length}개 도메인)</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 서드파티 서비스 목록 표시
+function displayThirdPartyServices(services) {
+  const thirdPartyList = document.getElementById('thirdPartyList');
+  if (!thirdPartyList) return;
+
+  if (services.length === 0) {
+    thirdPartyList.innerHTML = `
+      <div class="empty-state">
+        서드파티 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  thirdPartyList.innerHTML = services.map((service, index) => {
+    const domainsPreview = service.domains.slice(0, 3).join(', ');
+    const moreCount = service.domains.length > 3 ? ` +${service.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🔌 ${service.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${service.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${service.count} 요청 (${service.domains.length}개 도메인)</span>
           </div>
         </div>
         <span class="domain-rank">#${index + 1}</span>
@@ -342,18 +662,25 @@ function startAutoUpdate() {
   updateInterval = setInterval(async () => {
     if (isTracking) {
       try {
-        const currentDomains = await window.electronAPI.getCurrentDomains();
-        if (currentDomains) {
-          domains = currentDomains;
+        const data = await window.electronAPI.getCurrentDomains();
+        if (data) {
+          domains = data.domains;
+          ips = data.ips || [];
           domainCount.textContent = domains.length;
+          ipCount.textContent = ips.length;
           if (searchBox.value === '') {
             displayDomains(domains);
           } else {
             filterDomains();
           }
+          if (ipSearchBox.value === '') {
+            displayIPs(ips);
+          } else {
+            filterIPs();
+          }
         }
       } catch (error) {
-        console.error('Error updating domains:', error);
+        console.error('Error updating data:', error);
       }
     }
   }, 2000); // 2초마다 업데이트
@@ -520,6 +847,11 @@ async function analyzeUrl() {
 
       displayAutoDomains(autoDomains);
 
+      // IP, CDN, 서드파티 서비스 표시
+      displayAutoIPs(autoAllIPs);
+      displayAutoCDNServices(autoCDNServices);
+      displayAutoThirdPartyServices(autoThirdPartyServices);
+
       // 상세한 분석 결과 표시
       let resultHTML = `
         <div class="analysis-result success">
@@ -618,6 +950,18 @@ function displayAutoDomains(domainsToShow) {
     const ipTitle = ipDisplay.length > 0 ? ipDisplay.join(' | ') : 'IP 정보 없음';
     const ipIcon = hasIPv4 || hasIPv6 ? '🌐' : '';
 
+    // CDN, 서드파티, WebSocket 뱃지 생성
+    let badges = '';
+    if (domainInfo.isCDN) {
+      badges += `<span class="badge badge-cdn" title="CDN: ${domainInfo.cdnName}">🌐 ${domainInfo.cdnName}</span>`;
+    }
+    if (domainInfo.isThirdParty) {
+      badges += `<span class="badge badge-third-party" title="서드파티: ${domainInfo.thirdPartyName}">🔌 ${domainInfo.thirdPartyName}</span>`;
+    }
+    if (domainInfo.isWebSocket) {
+      badges += `<span class="badge badge-websocket" title="WebSocket 연결">⚡ WebSocket</span>`;
+    }
+
     return `
       <div class="domain-item">
         <div class="domain-main">
@@ -626,6 +970,105 @@ function displayAutoDomains(domainsToShow) {
             <span class="domain-types" title="${domainInfo.types.join(', ')}">${typesDisplay}</span>
             <span class="domain-count" title="총 요청 수">${domainInfo.count} 요청</span>
             ${ipIcon ? `<span class="domain-ip" title="${ipTitle}">${ipIcon} ${hasIPv4 ? domainInfo.ipv4[0] : domainInfo.ipv6[0]}</span>` : ''}
+            ${badges}
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 자동 분석 - IP 목록 표시
+function displayAutoIPs(ipsToShow = []) {
+  const autoIpsList = document.getElementById('autoIpsList');
+  if (!autoIpsList) return;
+
+  if (ipsToShow.length === 0) {
+    autoIpsList.innerHTML = `
+      <div class="empty-state">
+        분석을 시작하면 접속한 IP가 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  autoIpsList.innerHTML = ipsToShow.map((ip, index) => {
+    const isIPv6 = ip.includes(':');
+    const icon = isIPv6 ? '🌐' : '🔵';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">${icon} ${ip}</span>
+          <div class="domain-meta">
+            <span class="domain-types">${isIPv6 ? 'IPv6' : 'IPv4'}</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 자동 분석 - CDN 서비스 표시
+function displayAutoCDNServices(cdnServices = []) {
+  const autoCdnList = document.getElementById('autoCdnList');
+  if (!autoCdnList) return;
+
+  if (cdnServices.length === 0) {
+    autoCdnList.innerHTML = `
+      <div class="empty-state">
+        CDN 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  autoCdnList.innerHTML = cdnServices.map((cdn, index) => {
+    const domainsPreview = cdn.domains.slice(0, 3).join(', ');
+    const moreCount = cdn.domains.length > 3 ? ` +${cdn.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🌐 ${cdn.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${cdn.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${cdn.count} 요청 (${cdn.domains.length}개 도메인)</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 자동 분석 - 서드파티 서비스 표시
+function displayAutoThirdPartyServices(services = []) {
+  const autoThirdPartyList = document.getElementById('autoThirdPartyList');
+  if (!autoThirdPartyList) return;
+
+  if (services.length === 0) {
+    autoThirdPartyList.innerHTML = `
+      <div class="empty-state">
+        서드파티 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  autoThirdPartyList.innerHTML = services.map((service, index) => {
+    const domainsPreview = service.domains.slice(0, 3).join(', ');
+    const moreCount = service.domains.length > 3 ? ` +${service.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🔌 ${service.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${service.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${service.count} 요청 (${service.domains.length}개 도메인)</span>
           </div>
         </div>
         <span class="domain-rank">#${index + 1}</span>
@@ -635,7 +1078,7 @@ function displayAutoDomains(domainsToShow) {
 }
 
 // 자동 분석 - 도메인 목록만 내보내기
-function exportAutoDomainsList() {
+async function exportAutoDomainsList() {
   if (autoDomains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -645,19 +1088,15 @@ function exportAutoDomainsList() {
   const filename = `auto-analysis-domains-${timestamp}.txt`;
   const content = autoDomains.map(d => d.domain).join('\n');
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}\n\n총 ${autoDomains.length}개의 도메인`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}\n\n총 ${autoDomains.length}개의 도메인`
+  );
 }
 
 // 자동 분석 - IP 목록만 내보내기
-function exportAutoIPsList() {
+async function exportAutoIPsList() {
   if (autoAllIPs.length === 0) {
     alert('내보낼 IP 주소가 없습니다.');
     return;
@@ -667,19 +1106,106 @@ function exportAutoIPsList() {
   const filename = `auto-analysis-ips-${timestamp}.txt`;
   const content = autoAllIPs.join('\n');
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}\n\n총 ${autoAllIPs.length}개의 IP 주소`
+  );
+}
 
-  alert(`파일이 저장되었습니다:\n${filename}\n\n총 ${autoAllIPs.length}개의 IP 주소`);
+// 자동 분석 - SNI 화이트리스트 저장
+async function exportAutoSNIWhitelist() {
+  if (autoDomains.length === 0 && autoAllIPs.length === 0) {
+    alert('내보낼 데이터가 없습니다.');
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `sni-whitelist-auto-${timestamp}.txt`;
+
+  // 카테고리별로 도메인 분류
+  const mainDomains = [];
+  const cdnDomains = [];
+  const thirdPartyDomains = [];
+  const websocketDomains = [];
+
+  autoDomains.forEach(d => {
+    if (d.isWebSocket) {
+      websocketDomains.push(d.domain);
+    }
+    if (d.isCDN) {
+      cdnDomains.push(`${d.domain} # ${d.cdnName}`);
+    } else if (d.isThirdParty) {
+      thirdPartyDomains.push(`${d.domain} # ${d.thirdPartyName}`);
+    } else if (!d.isWebSocket) {
+      mainDomains.push(d.domain);
+    }
+  });
+
+  let content = '===== SNI 필터링 화이트리스트 (자동 분석) =====\n';
+  content += `분석 URL: ${urlInput.value.trim()}\n`;
+  content += `생성일시: ${new Date().toLocaleString('ko-KR')}\n`;
+  content += `총 도메인: ${autoDomains.length}개 | 총 IP: ${autoAllIPs.length}개\n`;
+  content += '=========================================\n\n';
+
+  // 주요 도메인
+  if (mainDomains.length > 0) {
+    content += '# 주요 도메인 (Main Domains)\n';
+    content += mainDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // CDN 도메인
+  if (cdnDomains.length > 0) {
+    content += '# CDN 도메인 (CDN Domains)\n';
+    content += cdnDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // 서드파티 도메인
+  if (thirdPartyDomains.length > 0) {
+    content += '# 서드파티 서비스 (Third-party Services)\n';
+    content += thirdPartyDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // WebSocket 도메인
+  if (websocketDomains.length > 0) {
+    content += '# WebSocket 연결 (WebSocket Connections)\n';
+    content += websocketDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // IP 주소
+  if (autoAllIPs.length > 0) {
+    const ipv4List = autoAllIPs.filter(ip => !ip.includes(':'));
+    const ipv6List = autoAllIPs.filter(ip => ip.includes(':'));
+
+    content += '# IP 주소 화이트리스트 (Trusted IP Addresses)\n';
+    content += '# SNI Hello에서 도메인이 보이지 않을 때 신뢰할 수 있는 서버\n\n';
+
+    if (ipv4List.length > 0) {
+      content += '## IPv4 주소\n';
+      content += ipv4List.join('\n');
+      content += '\n\n';
+    }
+
+    if (ipv6List.length > 0) {
+      content += '## IPv6 주소\n';
+      content += ipv6List.join('\n');
+      content += '\n\n';
+    }
+  }
+
+  await saveFileWithDialog(
+    filename,
+    content,
+    `SNI 화이트리스트가 저장되었습니다.\n\n도메인: ${autoDomains.length}개\nIP: ${autoAllIPs.length}개`
+  );
 }
 
 // 자동 분석 - 상세 정보 내보내기
-function exportAutoDomainsDetailed() {
+async function exportAutoDomainsDetailed() {
   if (autoDomains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -777,15 +1303,11 @@ function exportAutoDomainsDetailed() {
     });
   }
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}`
+  );
 }
 
 // 자동 분석 결과 초기화
@@ -904,6 +1426,7 @@ const workflowDomainsList = document.getElementById('workflowDomainsList');
 const workflowSearchBox = document.getElementById('workflowSearchBox');
 const exportWorkflowDomainsBtn = document.getElementById('exportWorkflowDomainsBtn');
 const exportWorkflowIPsBtn = document.getElementById('exportWorkflowIPsBtn');
+const exportWorkflowSNIWhitelistBtn = document.getElementById('exportWorkflowSNIWhitelistBtn');
 const exportWorkflowDetailedBtn = document.getElementById('exportWorkflowDetailedBtn');
 
 // 모달 관련
@@ -1419,6 +1942,11 @@ async function runWorkflow() {
       workflowResultsSection.style.display = 'block';
       displayWorkflowDomains(workflowDomains);
 
+      // IP, CDN, 서드파티 서비스 표시
+      displayWorkflowIPs(workflowAllIPs);
+      displayWorkflowCDNServices(workflowCDNServices);
+      displayWorkflowThirdPartyServices(workflowThirdPartyServices);
+
       // 내보내기 버튼 활성화
       exportWorkflowDomainsBtn.disabled = false;
       exportWorkflowIPsBtn.disabled = false;
@@ -1447,21 +1975,135 @@ function displayWorkflowDomains(domains) {
   }
 
   let html = '';
-  domains.forEach(domainInfo => {
+  domains.forEach((domainInfo, index) => {
+    // CDN, 서드파티, WebSocket 뱃지 생성
+    let badges = '';
+    if (domainInfo.isCDN) {
+      badges += `<span class="badge badge-cdn" title="CDN: ${domainInfo.cdnName}">🌐 ${domainInfo.cdnName}</span>`;
+    }
+    if (domainInfo.isThirdParty) {
+      badges += `<span class="badge badge-third-party" title="서드파티: ${domainInfo.thirdPartyName}">🔌 ${domainInfo.thirdPartyName}</span>`;
+    }
+    if (domainInfo.isWebSocket) {
+      badges += `<span class="badge badge-websocket" title="WebSocket 연결">⚡ WebSocket</span>`;
+    }
+
     html += `
       <div class="domain-item">
-        <div class="domain-name">${domainInfo.domain}</div>
-        <div class="domain-meta">
-          <span>요청: ${domainInfo.count}</span>
-          <span>타입: ${domainInfo.types.join(', ')}</span>
-          ${domainInfo.ipv4 && domainInfo.ipv4.length > 0 ? `<span>IPv4: ${domainInfo.ipv4.length}</span>` : ''}
-          ${domainInfo.ipv6 && domainInfo.ipv6.length > 0 ? `<span>IPv6: ${domainInfo.ipv6.length}</span>` : ''}
+        <div class="domain-main">
+          <span class="domain-url">${domainInfo.domain}</span>
+          <div class="domain-meta">
+            <span class="domain-types">타입: ${domainInfo.types.join(', ')}</span>
+            <span class="domain-count">요청: ${domainInfo.count}</span>
+            ${domainInfo.ipv4 && domainInfo.ipv4.length > 0 ? `<span class="domain-ip">IPv4: ${domainInfo.ipv4.length}</span>` : ''}
+            ${domainInfo.ipv6 && domainInfo.ipv6.length > 0 ? `<span class="domain-ip">IPv6: ${domainInfo.ipv6.length}</span>` : ''}
+            ${badges}
+          </div>
         </div>
+        <span class="domain-rank">#${index + 1}</span>
       </div>
     `;
   });
 
   workflowDomainsList.innerHTML = html;
+}
+
+// 워크플로우 - IP 목록 표시
+function displayWorkflowIPs(ipsToShow = []) {
+  const workflowIpsList = document.getElementById('workflowIpsList');
+  if (!workflowIpsList) return;
+
+  if (ipsToShow.length === 0) {
+    workflowIpsList.innerHTML = `
+      <div class="empty-state">
+        워크플로우를 실행하면 접속한 IP가 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  workflowIpsList.innerHTML = ipsToShow.map((ip, index) => {
+    const isIPv6 = ip.includes(':');
+    const icon = isIPv6 ? '🌐' : '🔵';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">${icon} ${ip}</span>
+          <div class="domain-meta">
+            <span class="domain-types">${isIPv6 ? 'IPv6' : 'IPv4'}</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 워크플로우 - CDN 서비스 표시
+function displayWorkflowCDNServices(cdnServices = []) {
+  const workflowCdnList = document.getElementById('workflowCdnList');
+  if (!workflowCdnList) return;
+
+  if (cdnServices.length === 0) {
+    workflowCdnList.innerHTML = `
+      <div class="empty-state">
+        CDN 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  workflowCdnList.innerHTML = cdnServices.map((cdn, index) => {
+    const domainsPreview = cdn.domains.slice(0, 3).join(', ');
+    const moreCount = cdn.domains.length > 3 ? ` +${cdn.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🌐 ${cdn.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${cdn.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${cdn.count} 요청 (${cdn.domains.length}개 도메인)</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 워크플로우 - 서드파티 서비스 표시
+function displayWorkflowThirdPartyServices(services = []) {
+  const workflowThirdPartyList = document.getElementById('workflowThirdPartyList');
+  if (!workflowThirdPartyList) return;
+
+  if (services.length === 0) {
+    workflowThirdPartyList.innerHTML = `
+      <div class="empty-state">
+        서드파티 서비스가 감지되면 여기에 표시됩니다.
+      </div>
+    `;
+    return;
+  }
+
+  workflowThirdPartyList.innerHTML = services.map((service, index) => {
+    const domainsPreview = service.domains.slice(0, 3).join(', ');
+    const moreCount = service.domains.length > 3 ? ` +${service.domains.length - 3}개` : '';
+
+    return `
+      <div class="domain-item">
+        <div class="domain-main">
+          <span class="domain-url">🔌 ${service.name}</span>
+          <div class="domain-meta">
+            <span class="domain-types" title="${service.domains.join(', ')}">${domainsPreview}${moreCount}</span>
+            <span class="domain-count" title="총 요청 수">${service.count} 요청 (${service.domains.length}개 도메인)</span>
+          </div>
+        </div>
+        <span class="domain-rank">#${index + 1}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 // 워크플로우 도메인 필터링
@@ -1472,7 +2114,7 @@ function filterWorkflowDomains() {
 }
 
 // 워크플로우 도메인 내보내기
-function exportWorkflowDomains() {
+async function exportWorkflowDomains() {
   if (workflowDomains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -1482,19 +2124,15 @@ function exportWorkflowDomains() {
   const filename = `workflow-domains-${timestamp}.txt`;
   const content = workflowDomains.map(d => d.domain).join('\n');
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}\n\n총 ${workflowDomains.length}개의 도메인`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}\n\n총 ${workflowDomains.length}개의 도메인`
+  );
 }
 
 // 워크플로우 IP 내보내기
-function exportWorkflowIPs() {
+async function exportWorkflowIPs() {
   if (workflowAllIPs.length === 0) {
     alert('내보낼 IP가 없습니다.');
     return;
@@ -1504,19 +2142,105 @@ function exportWorkflowIPs() {
   const filename = `workflow-ips-${timestamp}.txt`;
   const content = workflowAllIPs.join('\n');
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}\n\n총 ${workflowAllIPs.length}개의 IP 주소`
+  );
+}
 
-  alert(`파일이 저장되었습니다:\n${filename}\n\n총 ${workflowAllIPs.length}개의 IP 주소`);
+// 워크플로우 - SNI 화이트리스트 저장
+async function exportWorkflowSNIWhitelist() {
+  if (workflowDomains.length === 0 && workflowAllIPs.length === 0) {
+    alert('내보낼 데이터가 없습니다.');
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `sni-whitelist-workflow-${timestamp}.txt`;
+
+  // 카테고리별로 도메인 분류
+  const mainDomains = [];
+  const cdnDomains = [];
+  const thirdPartyDomains = [];
+  const websocketDomains = [];
+
+  workflowDomains.forEach(d => {
+    if (d.isWebSocket) {
+      websocketDomains.push(d.domain);
+    }
+    if (d.isCDN) {
+      cdnDomains.push(`${d.domain} # ${d.cdnName}`);
+    } else if (d.isThirdParty) {
+      thirdPartyDomains.push(`${d.domain} # ${d.thirdPartyName}`);
+    } else if (!d.isWebSocket) {
+      mainDomains.push(d.domain);
+    }
+  });
+
+  let content = '===== SNI 필터링 화이트리스트 (워크플로우) =====\n';
+  content += `생성일시: ${new Date().toLocaleString('ko-KR')}\n`;
+  content += `총 도메인: ${workflowDomains.length}개 | 총 IP: ${workflowAllIPs.length}개\n`;
+  content += '=========================================\n\n';
+
+  // 주요 도메인
+  if (mainDomains.length > 0) {
+    content += '# 주요 도메인 (Main Domains)\n';
+    content += mainDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // CDN 도메인
+  if (cdnDomains.length > 0) {
+    content += '# CDN 도메인 (CDN Domains)\n';
+    content += cdnDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // 서드파티 도메인
+  if (thirdPartyDomains.length > 0) {
+    content += '# 서드파티 서비스 (Third-party Services)\n';
+    content += thirdPartyDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // WebSocket 도메인
+  if (websocketDomains.length > 0) {
+    content += '# WebSocket 연결 (WebSocket Connections)\n';
+    content += websocketDomains.join('\n');
+    content += '\n\n';
+  }
+
+  // IP 주소
+  if (workflowAllIPs.length > 0) {
+    const ipv4List = workflowAllIPs.filter(ip => !ip.includes(':'));
+    const ipv6List = workflowAllIPs.filter(ip => ip.includes(':'));
+
+    content += '# IP 주소 화이트리스트 (Trusted IP Addresses)\n';
+    content += '# SNI Hello에서 도메인이 보이지 않을 때 신뢰할 수 있는 서버\n\n';
+
+    if (ipv4List.length > 0) {
+      content += '## IPv4 주소\n';
+      content += ipv4List.join('\n');
+      content += '\n\n';
+    }
+
+    if (ipv6List.length > 0) {
+      content += '## IPv6 주소\n';
+      content += ipv6List.join('\n');
+      content += '\n\n';
+    }
+  }
+
+  await saveFileWithDialog(
+    filename,
+    content,
+    `SNI 화이트리스트가 저장되었습니다.\n\n도메인: ${workflowDomains.length}개\nIP: ${workflowAllIPs.length}개`
+  );
 }
 
 // 워크플로우 상세 정보 내보내기
-function exportWorkflowDetailed() {
+async function exportWorkflowDetailed() {
   if (workflowDomains.length === 0) {
     alert('내보낼 도메인이 없습니다.');
     return;
@@ -1589,13 +2313,9 @@ function exportWorkflowDetailed() {
     content += '\n';
   }
 
-  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-
-  alert(`파일이 저장되었습니다:\n${filename}`);
+  await saveFileWithDialog(
+    filename,
+    content,
+    `파일이 저장되었습니다:\n${filename}`
+  );
 }

@@ -306,6 +306,30 @@
       font-family: 'Courier New', monospace;
     }
 
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 8px;
+      display: inline-block;
+      margin-left: 4px;
+    }
+
+    .badge-cdn {
+      color: #0369a1;
+      background: #bae6fd;
+    }
+
+    .badge-third-party {
+      color: #7c2d12;
+      background: #fed7aa;
+    }
+
+    .badge-websocket {
+      color: #4338ca;
+      background: #ddd6fe;
+    }
+
     .domain-rank {
       font-size: 12px;
       color: #9ca3af;
@@ -901,6 +925,10 @@
         <div class="stat-value" id="domainCount">0</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">수집된 IP</div>
+        <div class="stat-value" id="ipCount">0</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">경과 시간</div>
         <div class="stat-value" id="elapsedTime">00:00</div>
       </div>
@@ -919,6 +947,8 @@
     <div class="export-panel">
       <span class="export-label">내보내기:</span>
       <button id="exportDomainsBtn" class="export-btn" disabled>📋 도메인 목록</button>
+      <button id="exportIPsBtn" class="export-btn" disabled>🌐 IP 목록</button>
+      <button id="exportSNIWhitelistBtn" class="export-btn" disabled>🔐 SNI 화이트리스트</button>
       <button id="exportDetailedBtn" class="export-btn" disabled>📊 상세 정보</button>
     </div>
 
@@ -930,6 +960,40 @@
       <div class="domains-list" id="domainsList">
         <div class="empty-state">
           트래킹을 시작하면 방문한 도메인이 여기에 표시됩니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="domains-section" style="margin-top: 20px;">
+      <div class="domains-header">
+        <span>수집된 IP 목록</span>
+        <input type="text" class="search-box" id="ipSearchBox" placeholder="IP 검색...">
+      </div>
+      <div class="domains-list" id="ipsList">
+        <div class="empty-state">
+          트래킹을 시작하면 접속한 IP가 여기에 표시됩니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="domains-section" style="margin-top: 20px;">
+      <div class="domains-header">
+        <span>🌐 CDN 서비스</span>
+      </div>
+      <div class="domains-list" id="cdnList">
+        <div class="empty-state">
+          CDN 서비스가 감지되면 여기에 표시됩니다.
+        </div>
+      </div>
+    </div>
+
+    <div class="domains-section" style="margin-top: 20px;">
+      <div class="domains-header">
+        <span>🔌 서드파티 서비스</span>
+      </div>
+      <div class="domains-list" id="thirdPartyList">
+        <div class="empty-state">
+          서드파티 서비스가 감지되면 여기에 표시됩니다.
         </div>
       </div>
     </div>
@@ -1021,6 +1085,7 @@
         <span class="export-label">내보내기:</span>
         <button id="exportAutoDomainsBtn" class="export-btn" disabled>📋 도메인 목록</button>
         <button id="exportAutoIPsBtn" class="export-btn" disabled>🌐 IP 목록</button>
+        <button id="exportAutoSNIWhitelistBtn" class="export-btn" disabled>🔐 SNI 화이트리스트</button>
         <button id="exportAutoDetailedBtn" class="export-btn" disabled>📊 상세 정보</button>
       </div>
 
@@ -1032,6 +1097,40 @@
         <div class="domains-list" id="autoDomainsList">
           <div class="empty-state">
             URL을 입력하고 분석 시작 버튼을 클릭하세요.
+          </div>
+        </div>
+      </div>
+
+      <div class="domains-section" style="margin-top: 20px;">
+        <div class="domains-header">
+          <span>수집된 IP 목록</span>
+          <input type="text" class="search-box" id="autoIpSearchBox" placeholder="IP 검색...">
+        </div>
+        <div class="domains-list" id="autoIpsList">
+          <div class="empty-state">
+            분석을 시작하면 접속한 IP가 여기에 표시됩니다.
+          </div>
+        </div>
+      </div>
+
+      <div class="domains-section" style="margin-top: 20px;">
+        <div class="domains-header">
+          <span>🌐 CDN 서비스</span>
+        </div>
+        <div class="domains-list" id="autoCdnList">
+          <div class="empty-state">
+            CDN 서비스가 감지되면 여기에 표시됩니다.
+          </div>
+        </div>
+      </div>
+
+      <div class="domains-section" style="margin-top: 20px;">
+        <div class="domains-header">
+          <span>🔌 서드파티 서비스</span>
+        </div>
+        <div class="domains-list" id="autoThirdPartyList">
+          <div class="empty-state">
+            서드파티 서비스가 감지되면 여기에 표시됩니다.
           </div>
         </div>
       </div>
@@ -1093,6 +1192,7 @@
           <span class="export-label">내보내기:</span>
           <button id="exportWorkflowDomainsBtn" class="export-btn" disabled>📋 도메인 목록</button>
           <button id="exportWorkflowIPsBtn" class="export-btn" disabled>🌐 IP 목록</button>
+          <button id="exportWorkflowSNIWhitelistBtn" class="export-btn" disabled>🔐 SNI 화이트리스트</button>
           <button id="exportWorkflowDetailedBtn" class="export-btn" disabled>📊 상세 정보</button>
         </div>
 
@@ -1103,6 +1203,40 @@
           </div>
           <div class="domains-list" id="workflowDomainsList">
             <div class="empty-state">워크플로우를 실행하세요.</div>
+          </div>
+        </div>
+
+        <div class="domains-section" style="margin-top: 20px;">
+          <div class="domains-header">
+            <span>수집된 IP 목록</span>
+            <input type="text" class="search-box" id="workflowIpSearchBox" placeholder="IP 검색...">
+          </div>
+          <div class="domains-list" id="workflowIpsList">
+            <div class="empty-state">
+              워크플로우를 실행하면 접속한 IP가 여기에 표시됩니다.
+            </div>
+          </div>
+        </div>
+
+        <div class="domains-section" style="margin-top: 20px;">
+          <div class="domains-header">
+            <span>🌐 CDN 서비스</span>
+          </div>
+          <div class="domains-list" id="workflowCdnList">
+            <div class="empty-state">
+              CDN 서비스가 감지되면 여기에 표시됩니다.
+            </div>
+          </div>
+        </div>
+
+        <div class="domains-section" style="margin-top: 20px;">
+          <div class="domains-header">
+            <span>🔌 서드파티 서비스</span>
+          </div>
+          <div class="domains-list" id="workflowThirdPartyList">
+            <div class="empty-state">
+              서드파티 서비스가 감지되면 여기에 표시됩니다.
+            </div>
           </div>
         </div>
       </div>
