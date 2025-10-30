@@ -40,7 +40,13 @@
       "Read(//private/tmp/**)",
       "Bash(kill:*)",
       "Bash(npm run build:mac:arm:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Read(//Users/shinhheejoon/**)",
+      "Read(//Users/**)",
+      "Bash(test:*)",
+      "mcp__memory__create_entities",
+      "mcp__memory__create_relations",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []
