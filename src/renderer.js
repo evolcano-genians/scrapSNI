@@ -52,6 +52,8 @@ let ips = [];
 let startTime = null;
 let timerInterval = null;
 let updateInterval = null;
+let lastRenderedDomainCount = 0;  // 증분 업데이트를 위한 카운터
+let lastRenderedIPCount = 0;       // 증분 업데이트를 위한 카운터
 
 // 상태 변수들 - 자동 분석
 let autoDomains = [];
@@ -173,6 +175,7 @@ async function stopTracking() {
     if (result.success) {
       isTracking = false;
       domains = result.domains || [];
+      ips = result.ips || [];
       stopTimer();
       stopAutoUpdate();
       updateUI();
@@ -320,8 +323,101 @@ function updateUI() {
   displayThirdPartyServices(thirdPartyServices);
 }
 
-// 도메인 목록 표시
+// 타입 아이콘 매핑 (한 번만 정의)
+const TYPE_ICONS = {
+  'document': '📄',
+  'stylesheet': '🎨',
+  'image': '🖼️',
+  'script': '📜',
+  'font': '🔤',
+  'xhr': '🔄',
+  'fetch': '📡',
+  'media': '🎬',
+  'other': '📦'
+};
+
+// 단일 도메인 아이템 생성 (DOM 직접 생성으로 성능 최적화)
+function createDomainElement(domainInfo, index) {
+  const domainItem = document.createElement('div');
+  domainItem.className = 'domain-item';
+
+  // 메인 정보 컨테이너
+  const domainMain = document.createElement('div');
+  domainMain.className = 'domain-main';
+
+  // 도메인 URL
+  const domainUrl = document.createElement('span');
+  domainUrl.className = 'domain-url';
+  domainUrl.textContent = domainInfo.domain;
+  domainMain.appendChild(domainUrl);
+
+  // 메타 정보 컨테이너
+  const domainMeta = document.createElement('div');
+  domainMeta.className = 'domain-meta';
+
+  // 타입 아이콘 (최대 3개)
+  const types = domainInfo.types.slice(0, 3);
+  const typesDisplay = types.map(type => TYPE_ICONS[type] || '📦').join(' ');
+  const domainTypes = document.createElement('span');
+  domainTypes.className = 'domain-types';
+  domainTypes.title = domainInfo.types.join(', ');
+  domainTypes.textContent = typesDisplay;
+  domainMeta.appendChild(domainTypes);
+
+  // 요청 수
+  const domainCount = document.createElement('span');
+  domainCount.className = 'domain-count';
+  domainCount.title = '총 요청 수';
+  domainCount.textContent = `${domainInfo.count} 요청`;
+  domainMeta.appendChild(domainCount);
+
+  // CDN 뱃지
+  if (domainInfo.isCDN) {
+    const cdnBadge = document.createElement('span');
+    cdnBadge.className = 'badge badge-cdn';
+    cdnBadge.title = `CDN: ${domainInfo.cdnName}`;
+    cdnBadge.textContent = `🌐 ${domainInfo.cdnName}`;
+    domainMeta.appendChild(cdnBadge);
+  }
+
+  // 서드파티 뱃지
+  if (domainInfo.isThirdParty) {
+    const thirdPartyBadge = document.createElement('span');
+    thirdPartyBadge.className = 'badge badge-third-party';
+    thirdPartyBadge.title = `서드파티: ${domainInfo.thirdPartyName}`;
+    thirdPartyBadge.textContent = `🔌 ${domainInfo.thirdPartyName}`;
+    domainMeta.appendChild(thirdPartyBadge);
+  }
+
+  // WebSocket 뱃지
+  if (domainInfo.isWebSocket) {
+    const wsBadge = document.createElement('span');
+    wsBadge.className = 'badge badge-websocket';
+    wsBadge.title = 'WebSocket 연결';
+    wsBadge.textContent = '⚡ WebSocket';
+    domainMeta.appendChild(wsBadge);
+  }
+
+  domainMain.appendChild(domainMeta);
+  domainItem.appendChild(domainMain);
+
+  // 순위
+  const domainRank = document.createElement('span');
+  domainRank.className = 'domain-rank';
+  domainRank.textContent = `#${index + 1}`;
+  domainItem.appendChild(domainRank);
+
+  return domainItem;
+}
+
+// 도메인 목록 표시 (DocumentFragment로 성능 최적화)
 function displayDomains(domainsToShow) {
+  // 안전성 체크: 배열이 아닌 경우 처리
+  if (!Array.isArray(domainsToShow)) {
+    console.error('displayDomains: 배열이 아닌 데이터가 전달됨', domainsToShow);
+    domainsToShow = [];
+  }
+
   if (domainsToShow.length === 0) {
     domainsList.innerHTML = `
       <div class="empty-state">
@@ -331,53 +427,88 @@ function displayDomains(domainsToShow) {
     return;
   }
 
-  domainsList.innerHTML = domainsToShow.map((domainInfo, index) => {
-    const typeIcons = {
-      'document': '📄',
-      'stylesheet': '🎨',
-      'image': '🖼️',
-      'script': '📜',
-      'font': '🔤',
-      'xhr': '🔄',
-      'fetch': '📡',
-      'media': '🎬',
-      'other': '📦'
-    };
+  // DocumentFragment 사용으로 reflow 최소화
+  const fragment = document.createDocumentFragment();
+  domainsToShow.forEach((domainInfo, index) => {
+    fragment.appendChild(createDomainElement(domainInfo, index));
+  });
 
-    const typesDisplay = domainInfo.types.slice(0, 3).map(type =>
-      typeIcons[type] || '📦'
-    ).join(' ');
-
-    // CDN, 서드파티, WebSocket 뱃지 생성
-    let badges = '';
-    if (domainInfo.isCDN) {
-      badges += `<span class="badge badge-cdn" title="CDN: ${domainInfo.cdnName}">🌐 ${domainInfo.cdnName}</span>`;
-    }
-    if (domainInfo.isThirdParty) {
-      badges += `<span class="badge badge-third-party" title="서드파티: ${domainInfo.thirdPartyName}">🔌 ${domainInfo.thirdPartyName}</span>`;
-    }
-    if (domainInfo.isWebSocket) {
-      badges += `<span class="badge badge-websocket" title="WebSocket 연결">⚡ WebSocket</span>`;
-    }
-
-    return `
-      <div class="domain-item">
-        <div class="domain-main">
-          <span class="domain-url">${domainInfo.domain}</span>
-          <div class="domain-meta">
-            <span class="domain-types" title="${domainInfo.types.join(', ')}">${typesDisplay}</span>
-            <span class="domain-count" title="총 요청 수">${domainInfo.count} 요청</span>
-            ${badges}
-          </div>
-        </div>
-        <span class="domain-rank">#${index + 1}</span>
-      </div>
-    `;
-  }).join('');
+  // 한 번에 DOM에 추가 (single reflow)
+  domainsList.innerHTML = '';
+  domainsList.appendChild(fragment);
+  lastRenderedDomainCount = domainsToShow.length;
 }
 
-// IP 목록 표시
+// 도메인 증분 업데이트 (새로운 항목만 추가)
+function appendNewDomains() {
+  // 검색 중이면 전체 재렌더링
+  if (searchBox.value !== '') {
+    return displayDomains(filterDomainsArray(domains, searchBox.value));
+  }
+
+  const newDomains = domains.slice(lastRenderedDomainCount);
+  if (newDomains.length === 0) return;
+
+  const fragment = document.createDocumentFragment();
+  newDomains.forEach((domainInfo, index) => {
+    const absoluteIndex = lastRenderedDomainCount + index;
+    fragment.appendChild(createDomainElement(domainInfo, absoluteIndex));
+  });
+
+  domainsList.appendChild(fragment);
+  lastRenderedDomainCount = domains.length;
+}
+
+// 도메인 필터링 헬퍼 함수 (성능 최적화)
+function filterDomainsArray(domainsArray, searchTerm) {
+  const lowerSearch = searchTerm.toLowerCase();
+  return domainsArray.filter(d => d.domain.toLowerCase().includes(lowerSearch));
+}
+
+// 단일 IP 아이템 생성 (DOM 직접 생성으로 성능 최적화)
+function createIPElement(ip, index) {
+  const ipItem = document.createElement('div');
+  ipItem.className = 'domain-item';
+
+  const ipMain = document.createElement('div');
+  ipMain.className = 'domain-main';
+
+  // IPv4 vs IPv6 감지
+  const isIPv6 = ip.includes(':');
+  const icon = isIPv6 ? '🌐' : '🔵';
+
+  const ipUrl = document.createElement('span');
+  ipUrl.className = 'domain-url';
+  ipUrl.textContent = `${icon} ${ip}`;
+  ipMain.appendChild(ipUrl);
+
+  const ipMeta = document.createElement('div');
+  ipMeta.className = 'domain-meta';
+
+  const ipType = document.createElement('span');
+  ipType.className = 'domain-types';
+  ipType.textContent = isIPv6 ? 'IPv6' : 'IPv4';
+  ipMeta.appendChild(ipType);
+
+  ipMain.appendChild(ipMeta);
+  ipItem.appendChild(ipMain);
+
+  const ipRank = document.createElement('span');
+  ipRank.className = 'domain-rank';
+  ipRank.textContent = `#${index + 1}`;
+  ipItem.appendChild(ipRank);
+
+  return ipItem;
+}
+
+// IP 목록 표시 (DocumentFragment로 성능 최적화)
 function displayIPs(ipsToShow = ips) {
+  // 안전성 체크: 배열이 아닌 경우 처리
+  if (!Array.isArray(ipsToShow)) {
+    console.error('displayIPs: 배열이 아닌 데이터가 전달됨', ipsToShow);
+    ipsToShow = [];
+  }
+
   if (ipsToShow.length === 0) {
     ipsList.innerHTML = `
       <div class="empty-state">
@@ -387,23 +518,37 @@ function displayIPs(ipsToShow = ips) {
     return;
   }
 
-  ipsList.innerHTML = ipsToShow.map((ip, index) => {
-    // IPv4 vs IPv6 감지
-    const isIPv6 = ip.includes(':');
-    const icon = isIPv6 ? '🌐' : '🔵';
+  // DocumentFragment 사용으로 reflow 최소화
+  const fragment = document.createDocumentFragment();
+  ipsToShow.forEach((ip, index) => {
+    fragment.appendChild(createIPElement(ip, index));
+  });
 
-    return `
-      <div class="domain-item">
-        <div class="domain-main">
-          <span class="domain-url">${icon} ${ip}</span>
-          <div class="domain-meta">
-            <span class="domain-types">${isIPv6 ? 'IPv6' : 'IPv4'}</span>
-          </div>
-        </div>
-        <span class="domain-rank">#${index + 1}</span>
-      </div>
-    `;
-  }).join('');
+  // 한 번에 DOM에 추가 (single reflow)
+  ipsList.innerHTML = '';
+  ipsList.appendChild(fragment);
+  lastRenderedIPCount = ipsToShow.length;
+}
+
+// IP 증분 업데이트 (새로운 항목만 추가)
+function appendNewIPs() {
+  // 검색 중이면 전체 재렌더링
+  if (ipSearchBox.value !== '') {
+    const searchTerm = ipSearchBox.value.toLowerCase();
+    return displayIPs(ips.filter(ip => ip.toLowerCase().includes(searchTerm)));
+  }
+
+  const newIPs = ips.slice(lastRenderedIPCount);
+  if (newIPs.length === 0) return;
+
+  const fragment = document.createDocumentFragment();
+  newIPs.forEach((ip, index) => {
+    const absoluteIndex = lastRenderedIPCount + index;
+    fragment.appendChild(createIPElement(ip, absoluteIndex));
+  });
+
+  ipsList.appendChild(fragment);
+  lastRenderedIPCount = ips.length;
 }
 
 // IP 개수 업데이트
@@ -529,6 +674,12 @@ async function exportSNIWhitelist() {
 
 // CDN 서비스 집계
 function aggregateCDNServices(domainList) {
+  // Safety check: handle non-array data
+  if (!Array.isArray(domainList)) {
+    console.error('aggregateCDNServices: 배열이 아닌 데이터가 전달됨', domainList);
+    domainList = [];
+  }
+
   const cdnMap = new Map();
 
   domainList.forEach(domainInfo => {
@@ -551,6 +702,12 @@ function aggregateCDNServices(domainList) {
 
 // 서드파티 서비스 집계
 function aggregateThirdPartyServices(domainList) {
+  // Safety check: handle non-array data
+  if (!Array.isArray(domainList)) {
+    console.error('aggregateThirdPartyServices: 배열이 아닌 데이터가 전달됨', domainList);
+    domainList = [];
+  }
+
   const serviceMap = new Map();
 
   domainList.forEach(domainInfo => {
@@ -575,6 +732,12 @@ function aggregateThirdPartyServices(domainList) {
 function displayCDNServices(cdnServices) {
   const cdnList = document.getElementById('cdnList');
   if (!cdnList) return;
+
+  // 안전성 체크: 배열이 아닌 경우 처리
+  if (!Array.isArray(cdnServices)) {
+    console.error('displayCDNServices: 배열이 아닌 데이터가 전달됨', cdnServices);
+    cdnServices = [];
+  }
 
   if (cdnServices.length === 0) {
     cdnList.innerHTML = `
@@ -608,6 +771,12 @@ function displayCDNServices(cdnServices) {
 function displayThirdPartyServices(services) {
   const thirdPartyList = document.getElementById('thirdPartyList');
   if (!thirdPartyList) return;
+
+  // 안전성 체크: 배열이 아닌 경우 처리
+  if (!Array.isArray(services)) {
+    console.error('displayThirdPartyServices: 배열이 아닌 데이터가 전달됨', services);
+    services = [];
+  }
 
   if (services.length === 0) {
     thirdPartyList.innerHTML = `
@@ -668,13 +837,16 @@ function startAutoUpdate() {
           ips = data.ips || [];
           domainCount.textContent = domains.length;
           ipCount.textContent = ips.length;
+
+          // Use incremental updates for better performance
           if (searchBox.value === '') {
-            displayDomains(domains);
+            appendNewDomains();  // Only append new items instead of full re-render
           } else {
             filterDomains();
           }
+
           if (ipSearchBox.value === '') {
-            displayIPs(ips);
+            appendNewIPs();  // Only append new items instead of full re-render
           } else {
             filterIPs();
           }
@@ -699,9 +871,10 @@ async function checkTrackingStatus() {
   try {
     isTracking = await window.electronAPI.getTrackingStatus();
     if (isTracking) {
-      const currentDomains = await window.electronAPI.getCurrentDomains();
-      if (currentDomains) {
-        domains = currentDomains;
+      const data = await window.electronAPI.getCurrentDomains();
+      if (data) {
+        domains = data.domains || [];
+        ips = data.ips || [];
       }
       startAutoUpdate();
     }

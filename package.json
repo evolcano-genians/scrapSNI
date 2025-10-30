@@ -2,7 +2,7 @@
   "name": "domain-tracker",
   "version": "1.0.0",
   "description": "Web domain tracking application using Electron and Playwright",
-  "main": "src/main.js",
+  "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
     "watch": "tsc --watch",
@@ -48,7 +48,8 @@
       "buildResources": "build"
     },
     "files": [
-      "src/**/*",
+      "src/index.html",
+      "src/renderer.js",
       "dist/**/*",
       "package.json"
     ],

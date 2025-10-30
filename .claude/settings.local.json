@@ -39,7 +39,8 @@
       "Bash(pkill:*)",
       "Read(//private/tmp/**)",
       "Bash(kill:*)",
-      "Bash(npm run build:mac:arm:*)"
+      "Bash(npm run build:mac:arm:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
