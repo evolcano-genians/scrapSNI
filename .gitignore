@@ -42,3 +42,6 @@ coverage/
 *.temp
 .cache/
 nul
+
+# Resources
+resources/

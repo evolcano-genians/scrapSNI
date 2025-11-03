@@ -1,0 +1,63 @@
+{
+  "compilerOptions": {
+    // 기본 설정
+    "target": "ES2020",                          // ECMAScript 2020으로 컴파일
+    "module": "commonjs",                        // Node.js 호환 모듈 시스템
+    "lib": ["ES2020", "DOM"],                   // 사용할 라이브러리 (DOM 추가)
+    "outDir": "./dist",                         // 컴파일된 파일 출력 디렉토리
+    "rootDir": "./src",                         // 소스 파일 루트 디렉토리
+
+    // 타입 체크 옵션
+    "strict": true,                             // 모든 엄격한 타입 체크 활성화
+    "noImplicitAny": true,                      // any 타입 암시적 사용 금지
+    "strictNullChecks": true,                   // null/undefined 엄격 체크
+    "strictFunctionTypes": true,                // 함수 타입 엄격 체크
+    "strictBindCallApply": true,                // bind, call, apply 엄격 체크
+    "strictPropertyInitialization": true,       // 클래스 속성 초기화 체크
+    "noImplicitThis": true,                     // this 타입 명시 필요
+    "alwaysStrict": true,                       // 'use strict' 자동 삽입
+
+    // 추가 타입 체크
+    "noUnusedLocals": false,                    // 사용하지 않는 지역 변수 경고
+    "noUnusedParameters": false,                // 사용하지 않는 매개변수 경고
+    "noImplicitReturns": true,                  // 모든 경로에서 반환값 필요
+    "noFallthroughCasesInSwitch": true,        // switch 문 fallthrough 방지
+
+    // 모듈 해석
+    "moduleResolution": "node",                 // Node.js 모듈 해석 방식
+    "esModuleInterop": true,                    // CommonJS/ES6 모듈 상호운용성
+    "allowSyntheticDefaultImports": true,       // default import 허용
+    "resolveJsonModule": true,                  // JSON 파일 import 허용
+
+    // 소스맵 및 선언 파일
+    "sourceMap": true,                          // 소스맵 생성 (디버깅용)
+    "declaration": true,                        // .d.ts 선언 파일 생성
+    "declarationMap": true,                     // 선언 파일 소스맵 생성
+
+    // 기타
+    "skipLibCheck": true,                       // 라이브러리 타입 체크 건너뛰기 (빌드 속도 향상)
+    "forceConsistentCasingInFileNames": true,   // 파일명 대소문자 일관성 강제
+    "removeComments": false,                    // 주석 유지
+
+    // 실험적 기능
+    "experimentalDecorators": true,             // 데코레이터 지원
+    "emitDecoratorMetadata": true              // 데코레이터 메타데이터 생성
+  },
+
+  // 컴파일할 파일 지정
+  "include": [
+    "src/**/*"
+  ],
+
+  // 컴파일에서 제외할 파일
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
+
+  // TypeScript 프로젝트 참조 (향후 확장용)
+  "references": []
+}
