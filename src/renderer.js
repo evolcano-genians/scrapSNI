@@ -6,6 +6,21 @@ const exportIPsBtn = document.getElementById('exportIPsBtn');
 const exportSNIWhitelistBtn = document.getElementById('exportSNIWhitelistBtn');
 const exportDetailedBtn = document.getElementById('exportDetailedBtn');
 const clearBtn = document.getElementById('clearBtn');
+
+// 크롤링 옵션
+const startCrawlBtn = document.getElementById('startCrawlBtn');
+const crawlDepthSelect = document.getElementById('crawlDepth');
+const maxLinksInput = document.getElementById('maxLinks');
+
+// 세션 관리
+const loginBtn = document.getElementById('loginBtn');
+const loadSessionBtn = document.getElementById('loadSessionBtn');
+const clearSessionBtn = document.getElementById('clearSessionBtn');
+const exportSessionBtn = document.getElementById('exportSessionBtn');
+const importSessionBtn = document.getElementById('importSessionBtn');
+
+// 세션 파일 경로 (전역 변수)
+let SESSION_PATH = null;
 const domainsList = document.getElementById('domainsList');
 const ipsList = document.getElementById('ipsList');
 const domainCount = document.getElementById('domainCount');
@@ -71,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeEventListeners();
   checkTrackingStatus();
   checkSavedSession(); // 저장된 세션 확인
+  setupCrawlProgressListener(); // 크롤링 진행 상황 리스너 설정
 });
 
 // 이벤트 리스너 설정
@@ -85,6 +101,16 @@ function initializeEventListeners() {
   clearBtn.addEventListener('click', clearDomains);
   searchBox.addEventListener('input', filterDomains);
   ipSearchBox.addEventListener('input', filterIPs);
+
+  // 크롤링 버튼
+  startCrawlBtn.addEventListener('click', startManualCrawl);
+
+  // 세션 관리
+  loginBtn.addEventListener('click', saveCurrentSession);
+  loadSessionBtn.addEventListener('click', loadSavedSession);
+  clearSessionBtn.addEventListener('click', clearSavedSession);
+  exportSessionBtn.addEventListener('click', exportSession);
+  importSessionBtn.addEventListener('click', importSession);
 
   // 자동 분석 탭
   analyzeBtn.addEventListener('click', analyzeUrl);
@@ -141,7 +167,11 @@ async function startTracking() {
     showLoading();
     startBtn.disabled = true;
 
-    const result = await window.electronAPI.startTracking();
+    // 선택된 브라우저 타입 가져오기
+    const browserSelect = document.getElementById('browserSelect');
+    const browserType = browserSelect ? browserSelect.value : 'chromium';
+
+    const result = await window.electronAPI.startTracking(browserType);
 
     if (result.success) {
       isTracking = true;
@@ -189,6 +219,40 @@ async function stopTracking() {
     stopBtn.disabled = false;
   } finally {
     hideLoading();
+  }
+}
+
+// 수동 크롤링 시작 (트래킹 중 버튼으로 실행)
+async function startManualCrawl() {
+  if (!isTracking) {
+    alert('트래킹이 실행 중일 때만 자동 크롤링을 시작할 수 있습니다.');
+    return;
+  }
+
+  try {
+    startCrawlBtn.disabled = true;
+    startCrawlBtn.textContent = '🔍 크롤링 중...';
+
+    const depth = parseInt(crawlDepthSelect.value);
+    const maxLinks = parseInt(maxLinksInput.value);
+
+    console.log(`Starting manual crawl with depth=${depth}, maxLinks=${maxLinks}`);
+
+    const result = await window.electronAPI.startAutoCrawl(depth, maxLinks);
+
+    if (result.success) {
+      alert('자동 크롤링이 완료되었습니다!');
+      // 크롤링 후 도메인 목록 갱신
+      await updateDomainList();
+    } else {
+      alert(`자동 크롤링 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Manual crawl error:', error);
+    alert(`자동 크롤링 오류: ${error.message}`);
+  } finally {
+    startCrawlBtn.disabled = !isTracking; // 트래킹 중이면 다시 활성화
+    startCrawlBtn.textContent = '🔍 자동 크롤링 시작';
   }
 }
 
@@ -284,6 +348,161 @@ function clearDomains() {
   sessionStatus.textContent = '-';
 }
 
+// ==================== 크롤링 옵션 및 세션 관리 ====================
+
+/**
+ * 자동 크롤링 옵션 표시/숨김
+ */
+function toggleCrawlingOptions() {
+  const isChecked = autoCrawlCheckbox.checked;
+  depthOption.style.display = isChecked ? 'flex' : 'none';
+  maxLinksOption.style.display = isChecked ? 'flex' : 'none';
+}
+
+/**
+ * 현재 브라우저 세션 저장
+ */
+async function saveCurrentSession() {
+  if (!isTracking) {
+    alert('트래킹이 실행 중일 때만 세션을 저장할 수 있습니다.');
+    return;
+  }
+
+  try {
+    // SESSION_PATH가 없으면 경로를 먼저 얻기
+    if (!SESSION_PATH) {
+      const sessionInfo = await window.electronAPI.checkSavedSession();
+      SESSION_PATH = sessionInfo.path;
+    }
+
+    const result = await window.electronAPI.saveSession(SESSION_PATH);
+    if (result.success) {
+      alert('세션이 저장되었습니다!');
+      // 버튼 활성화
+      loadSessionBtn.disabled = false;
+      clearSessionBtn.disabled = false;
+    } else {
+      alert(`세션 저장 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Save session error:', error);
+    alert(`세션 저장 오류: ${error.message}`);
+  }
+}
+
+/**
+ * 저장된 세션 로드
+ */
+async function loadSavedSession() {
+  if (isTracking) {
+    alert('트래킹 중에는 세션을 로드할 수 없습니다.\n먼저 트래킹을 중지해주세요.');
+    return;
+  }
+
+  try {
+    // SESSION_PATH가 없으면 경로를 먼저 얻기
+    if (!SESSION_PATH) {
+      const sessionInfo = await window.electronAPI.checkSavedSession();
+      SESSION_PATH = sessionInfo.path;
+    }
+
+    const result = await window.electronAPI.loadSession(SESSION_PATH);
+    if (result.success) {
+      alert('세션이 로드되었습니다!\n이제 트래킹을 시작할 수 있습니다.');
+    } else {
+      alert(`세션 로드 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Load session error:', error);
+    alert(`세션 로드 오류: ${error.message}`);
+  }
+}
+
+/**
+ * 저장된 세션 삭제
+ */
+async function clearSavedSession() {
+  if (!confirm('저장된 세션을 삭제하시겠습니까?')) {
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.clearSavedSession();
+    if (result.success) {
+      alert(result.message || '세션이 삭제되었습니다.');
+      // 버튼 비활성화
+      loadSessionBtn.disabled = true;
+      clearSessionBtn.disabled = true;
+    } else {
+      alert(`세션 삭제 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Clear session error:', error);
+    alert(`세션 삭제 오류: ${error.message}`);
+  }
+}
+
+/**
+ * 세션 내보내기 (사용자 지정 경로)
+ */
+async function exportSession() {
+  if (!isTracking) {
+    alert('트래킹이 실행 중일 때만 세션을 내보낼 수 있습니다.');
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.exportSession();
+    if (result.success) {
+      alert(`세션이 내보내졌습니다!\n저장 위치: ${result.path}`);
+    } else if (result.canceled) {
+      // 사용자가 취소한 경우 알림 표시 안 함
+      console.log('Export session canceled by user');
+    } else {
+      alert(`세션 내보내기 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Export session error:', error);
+    alert(`세션 내보내기 오류: ${error.message}`);
+  }
+}
+
+/**
+ * 세션 가져오기 (사용자 지정 경로)
+ */
+async function importSession() {
+  if (isTracking) {
+    alert('트래킹 중에는 세션을 가져올 수 없습니다.\n먼저 트래킹을 중지해주세요.');
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.importSession();
+    if (result.success) {
+      alert(`세션을 가져왔습니다!\n파일 위치: ${result.path}\n\n이제 트래킹을 시작할 수 있습니다.`);
+    } else if (result.canceled) {
+      // 사용자가 취소한 경우 알림 표시 안 함
+      console.log('Import session canceled by user');
+    } else {
+      alert(`세션 가져오기 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Import session error:', error);
+    alert(`세션 가져오기 오류: ${error.message}`);
+  }
+}
+
+/**
+ * 크롤링 진행 상황 리스너 설정
+ */
+function setupCrawlProgressListener() {
+  window.electronAPI.onCrawlProgress((message) => {
+    console.log('[Crawl Progress]', message);
+    // 콘솔에만 출력 (원하면 UI에 표시할 수도 있음)
+    // 예: sessionStatus.textContent = message;
+  });
+}
+
 // 도메인 필터링
 function filterDomains() {
   const searchTerm = searchBox.value.toLowerCase();
@@ -295,6 +514,7 @@ function updateUI() {
   // 버튼 상태 업데이트
   startBtn.disabled = isTracking;
   stopBtn.disabled = !isTracking;
+  startCrawlBtn.disabled = !isTracking; // 크롤링 버튼은 트래킹 중에만 활성화
   const hasData = domains.length > 0;
   const hasAnyData = domains.length > 0 || ips.length > 0;
   exportDomainsBtn.disabled = !hasData;
@@ -1548,8 +1768,17 @@ async function checkSavedSession() {
   try {
     const sessionInfo = await window.electronAPI.checkSavedSession();
 
+    // 세션 경로 저장
+    if (sessionInfo.path) {
+      SESSION_PATH = sessionInfo.path;
+    }
+
     if (sessionInfo.exists) {
-      // 저장된 세션이 있으면 체크박스 옆에 표시
+      // 수동 트래킹 탭: Load/Clear 버튼 활성화
+      loadSessionBtn.disabled = false;
+      clearSessionBtn.disabled = false;
+
+      // 자동 분석 탭: 체크박스 옆에 표시
       const label = useSavedSessionCheckbox.parentElement;
       if (label && !label.querySelector('.session-indicator')) {
         const indicator = document.createElement('span');
@@ -1560,6 +1789,10 @@ async function checkSavedSession() {
         indicator.style.fontWeight = 'bold';
         label.appendChild(indicator);
       }
+    } else {
+      // 세션 파일이 없으면 버튼 비활성화
+      loadSessionBtn.disabled = true;
+      clearSessionBtn.disabled = true;
     }
   } catch (error) {
     console.error('Error checking saved session:', error);

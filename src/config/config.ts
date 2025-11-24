@@ -36,6 +36,7 @@ const defaultConfig: AppConfig = {
 
   // 브라우저 설정
   browser: {
+    browserType: 'chromium',                             // 브라우저 타입 (chromium, firefox, webkit)
     headless: false,                                     // Headless 모드 여부 (기본: 화면 표시)
     userAgent: constants.DEFAULT_USER_AGENT,            // User-Agent 문자열
     defaultWaitTime: constants.DEFAULT_WAIT_TIME,       // 기본 대기 시간: 5초

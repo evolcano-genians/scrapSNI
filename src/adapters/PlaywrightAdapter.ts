@@ -5,9 +5,10 @@
  * Adapter 패턴을 사용하여 Playwright에 대한 의존성을 추상화합니다.
  */
 
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { chromium, firefox, webkit, Browser, BrowserContext, Page } from 'playwright';
 import { IBrowserAutomation, BrowserLaunchOptions, BrowserContextOptions } from '../interfaces/IBrowserAutomation';
 import { Injectable } from '../decorators';
+import { BrowserType } from '../types';
 
 /**
  * PlaywrightAdapter 클래스
@@ -21,10 +22,12 @@ export class PlaywrightAdapter implements IBrowserAutomation {
    * 브라우저를 시작합니다.
    *
    * @param options - 브라우저 실행 옵션
+   * @param browserType - 브라우저 타입 (chromium, firefox, webkit)
    * @returns Browser 인스턴스
    */
-  async launch(options: BrowserLaunchOptions): Promise<Browser> {
+  async launch(options: BrowserLaunchOptions, browserType: BrowserType = 'chromium'): Promise<Browser> {
     console.log('[PlaywrightAdapter] Launching browser...');
+    console.log('[PlaywrightAdapter] Browser type:', browserType);
     console.log('[PlaywrightAdapter] Options:', {
       headless: options.headless,
       executablePath: options.executablePath || 'default',
@@ -52,7 +55,23 @@ export class PlaywrightAdapter implements IBrowserAutomation {
       }
     });
 
-    const browser = await chromium.launch(launchOptions);
+    // 브라우저 타입에 따라 적절한 브라우저 실행
+    let browser: Browser;
+    switch (browserType) {
+      case 'chromium':
+        browser = await chromium.launch(launchOptions);
+        break;
+      case 'firefox':
+        browser = await firefox.launch(launchOptions);
+        break;
+      case 'webkit':
+        browser = await webkit.launch(launchOptions);
+        break;
+      default:
+        console.warn(`[PlaywrightAdapter] Unknown browser type: ${browserType}, using chromium`);
+        browser = await chromium.launch(launchOptions);
+    }
+
     console.log('[PlaywrightAdapter] Browser launched successfully');
     return browser;
   }

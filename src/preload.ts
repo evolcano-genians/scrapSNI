@@ -18,10 +18,18 @@ import { AnalysisOptions, WorkflowStep, SNIWhitelistResult, SNIExportOptions } f
  */
 interface ElectronAPI {
   // 트래킹 관련
-  startTracking: () => Promise<{ success: boolean; error?: string }>;
+  startTracking: (browserType?: string) => Promise<{ success: boolean; error?: string }>;
   stopTracking: () => Promise<{ success: boolean; domains?: any[]; error?: string }>;
   getTrackingStatus: () => Promise<boolean>;
   getCurrentDomains: () => Promise<any[]>;
+  startAutoCrawl: (depth: number, maxLinks: number) => Promise<{ success: boolean; error?: string }>;
+
+  // 세션 관리
+  saveSession: (sessionPath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  loadSession: (sessionPath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  exportSession: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+  importSession: () => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+  onCrawlProgress: (callback: (message: string) => void) => void;
 
   // 자동 분석 관련
   analyzeUrl: (targetUrl: string, options: AnalysisOptions) => Promise<any>;
@@ -57,18 +65,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 수동 트래킹을 시작합니다.
    *
+   * @param {string} browserType - 브라우저 타입 (chromium, firefox, webkit) - 선택사항
    * @returns {Promise} 성공 여부와 에러 메시지
    *
    * @example
-   * const result = await window.electronAPI.startTracking();
+   * const result = await window.electronAPI.startTracking('firefox');
    * if (result.success) {
    *   console.log('트래킹 시작됨');
    * } else {
    *   console.error(result.error);
    * }
    */
-  startTracking: () => {
-    return ipcRenderer.invoke('start-tracking');
+  startTracking: (browserType?: string) => {
+    return ipcRenderer.invoke('start-tracking', browserType);
   },
 
   /**
@@ -110,6 +119,105 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   getCurrentDomains: () => {
     return ipcRenderer.invoke('get-current-domains');
+  },
+
+  /**
+   * 자동 크롤링을 시작합니다 (Manual Tracking 중).
+   *
+   * @param {number} depth - 크롤링 깊이 (0-3)
+   * @param {number} maxLinks - 각 깊이별 최대 링크 수
+   * @returns {Promise} 성공 여부
+   *
+   * @example
+   * const result = await window.electronAPI.startAutoCrawl(1, 10);
+   * if (result.success) {
+   *   console.log('자동 크롤링 시작');
+   * }
+   */
+  startAutoCrawl: (depth: number, maxLinks: number) => {
+    return ipcRenderer.invoke('start-auto-crawl', depth, maxLinks);
+  },
+
+  // ==================== 세션 관리 ====================
+
+  /**
+   * 현재 브라우저 세션을 저장합니다.
+   *
+   * @param {string} sessionPath - 세션 파일 경로
+   * @returns {Promise} 성공 여부와 저장 경로
+   *
+   * @example
+   * const result = await window.electronAPI.saveSession('/path/to/session.json');
+   * if (result.success) {
+   *   console.log('세션 저장됨:', result.path);
+   * }
+   */
+  saveSession: (sessionPath: string) => {
+    return ipcRenderer.invoke('save-session', sessionPath);
+  },
+
+  /**
+   * 저장된 세션을 로드합니다.
+   *
+   * @param {string} sessionPath - 세션 파일 경로
+   * @returns {Promise} 성공 여부와 로드 경로
+   *
+   * @example
+   * const result = await window.electronAPI.loadSession('/path/to/session.json');
+   * if (result.success) {
+   *   console.log('세션 로드됨:', result.path);
+   * }
+   */
+  loadSession: (sessionPath: string) => {
+    return ipcRenderer.invoke('load-session', sessionPath);
+  },
+
+  /**
+   * 세션을 사용자 지정 경로로 내보냅니다.
+   *
+   * @returns {Promise} 성공 여부, 저장 경로, 취소 여부
+   *
+   * @example
+   * const result = await window.electronAPI.exportSession();
+   * if (result.success) {
+   *   console.log('세션 내보내기 완료:', result.path);
+   * } else if (result.canceled) {
+   *   console.log('사용자가 취소함');
+   * }
+   */
+  exportSession: () => {
+    return ipcRenderer.invoke('export-session');
+  },
+
+  /**
+   * 사용자 지정 경로에서 세션을 가져옵니다.
+   *
+   * @returns {Promise} 성공 여부, 로드 경로, 취소 여부
+   *
+   * @example
+   * const result = await window.electronAPI.importSession();
+   * if (result.success) {
+   *   console.log('세션 가져오기 완료:', result.path);
+   * } else if (result.canceled) {
+   *   console.log('사용자가 취소함');
+   * }
+   */
+  importSession: () => {
+    return ipcRenderer.invoke('import-session');
+  },
+
+  /**
+   * 크롤링 진행 상황을 수신합니다.
+   *
+   * @param {Function} callback - 진행 상황 메시지를 받을 콜백
+   *
+   * @example
+   * window.electronAPI.onCrawlProgress((message) => {
+   *   console.log('크롤링 진행:', message);
+   * });
+   */
+  onCrawlProgress: (callback: (message: string) => void) => {
+    ipcRenderer.on('crawl-progress', (_event, message) => callback(message));
   },
 
   // ==================== 자동 분석 관련 ====================

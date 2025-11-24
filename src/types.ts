@@ -31,6 +31,12 @@ export type ResourceType =
 export type Protocol = 'http' | 'https' | 'ws' | 'wss';
 
 /**
+ * 브라우저 타입
+ * Playwright가 지원하는 브라우저 엔진
+ */
+export type BrowserType = 'chromium' | 'firefox' | 'webkit';
+
+/**
  * 워크플로우 단계 타입
  */
 export type WorkflowStepType =
@@ -376,6 +382,7 @@ export interface LimitsConfig {
  * 브라우저 설정
  */
 export interface BrowserConfig {
+  browserType: BrowserType;    // 브라우저 타입 (chromium, firefox, webkit)
   headless: boolean;           // Headless 모드 여부
   userAgent: string;           // User-Agent 문자열
   defaultWaitTime: number;     // 기본 대기 시간 (밀리초)

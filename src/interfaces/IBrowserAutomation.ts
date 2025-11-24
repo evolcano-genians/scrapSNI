@@ -6,6 +6,7 @@
  */
 
 import { Browser, BrowserContext, Page } from 'playwright';
+import { BrowserType } from '../types';
 
 /**
  * 브라우저 실행 옵션
@@ -37,9 +38,10 @@ export interface IBrowserAutomation {
    * 브라우저를 시작합니다.
    *
    * @param options - 브라우저 실행 옵션
+   * @param browserType - 브라우저 타입 (chromium, firefox, webkit)
    * @returns Browser 인스턴스
    */
-  launch(options: BrowserLaunchOptions): Promise<Browser>;
+  launch(options: BrowserLaunchOptions, browserType?: BrowserType): Promise<Browser>;
 
   /**
    * 새로운 브라우저 컨텍스트를 생성합니다.

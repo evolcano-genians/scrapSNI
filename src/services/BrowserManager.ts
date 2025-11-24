@@ -45,45 +45,68 @@ export class BrowserManager {
   }
 
   /**
-   * Chromium의 실행 경로를 찾습니다.
+   * 브라우저의 실행 경로를 찾습니다.
    *
    * 우선순위:
-   * 1. 앱에 번들된 Chromium (배포용)
-   * 2. 시스템에 설치된 Playwright Chromium (개발용)
+   * 1. 앱에 번들된 브라우저 (배포용)
+   * 2. 시스템에 설치된 Playwright 브라우저 (개발용)
    *
-   * @returns Chromium 실행 파일 경로, 없으면 null
+   * @param browserType - 브라우저 타입 (chromium, firefox, webkit)
+   * @returns 브라우저 실행 파일 경로, 없으면 null
    */
-  private getChromiumPath(): string | null {
-    console.log('[Chromium Path] Starting search...');
-    console.log('[Chromium Path] Platform:', process.platform);
-    console.log('[Chromium Path] process.resourcesPath:', process.resourcesPath);
+  private getBrowserPath(browserType: string): string | null {
+    console.log(`[Browser Path] Starting search for ${browserType}...`);
+    console.log('[Browser Path] Platform:', process.platform);
+    console.log('[Browser Path] process.resourcesPath:', process.resourcesPath);
 
     let executableSubPath: string;
+    let browserDirName: string;
 
-    // 플랫폼별 실행 파일 경로
-    if (process.platform === 'win32') {
-      executableSubPath = path.join('chrome-win', 'chrome.exe');
-    } else if (process.platform === 'darwin') {
-      executableSubPath = path.join('chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+    // 브라우저 타입별 디렉토리명 및 실행 파일 경로
+    if (browserType === 'firefox') {
+      browserDirName = 'firefox-1466'; // Playwright firefox version
+      if (process.platform === 'win32') {
+        executableSubPath = path.join('firefox', 'firefox.exe');
+      } else if (process.platform === 'darwin') {
+        executableSubPath = path.join('Firefox.app', 'Contents', 'MacOS', 'firefox');
+      } else {
+        executableSubPath = path.join('firefox', 'firefox');
+      }
+    } else if (browserType === 'webkit') {
+      browserDirName = 'webkit-2104'; // Playwright webkit version
+      if (process.platform === 'win32') {
+        executableSubPath = path.join('MiniBrowser.exe');
+      } else if (process.platform === 'darwin') {
+        executableSubPath = path.join('Playwright.app', 'Contents', 'MacOS', 'Playwright');
+      } else {
+        executableSubPath = path.join('minibrowser-gtk', 'pw_run.sh');
+      }
     } else {
-      // Linux
-      executableSubPath = path.join('chrome-linux', 'chrome');
+      // chromium (default)
+      browserDirName = 'chromium-1194'; // Playwright chromium version
+      if (process.platform === 'win32') {
+        executableSubPath = path.join('chrome-win', 'chrome.exe');
+      } else if (process.platform === 'darwin') {
+        executableSubPath = path.join('chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+      } else {
+        executableSubPath = path.join('chrome-linux', 'chrome');
+      }
     }
 
-    // 1순위: 앱에 번들된 Chromium 찾기 (배포용)
+    // 1순위: 앱에 번들된 브라우저 찾기 (배포용)
     try {
-      const bundledPath = path.join(process.resourcesPath, 'playwright', 'chromium-1194', executableSubPath);
-      console.log('[Chromium Path] Checking bundled path:', bundledPath);
+      const bundledPath = path.join(process.resourcesPath, 'playwright', browserDirName, executableSubPath);
+      console.log(`[Browser Path] Checking bundled path:`, bundledPath);
 
       if (fs.existsSync(bundledPath)) {
-        console.log('✓ Found bundled Chromium at:', bundledPath);
+        console.log(`✓ Found bundled ${browserType} at:`, bundledPath);
         return bundledPath;
       }
     } catch (error) {
-      console.log('[Chromium Path] Error checking bundled Chromium:', (error as Error).message);
+      console.log(`[Browser Path] Error checking bundled ${browserType}:`, (error as Error).message);
     }
 
-    // 2순위: 시스템에 설치된 Playwright Chromium 찾기 (개발용)
+    // 2순위: 시스템에 설치된 Playwright 브라우저 찾기 (개발용)
     const homeDir = os.homedir();
     let playwrightPath: string;
 
@@ -103,17 +126,17 @@ export class BrowserManager {
       }
 
       const dirs = fs.readdirSync(playwrightPath);
-      const chromiumDir = dirs.find(dir => dir.startsWith('chromium-'));
+      const browserDir = dirs.find(dir => dir.startsWith(`${browserType}-`));
 
-      if (chromiumDir) {
-        const executablePath = path.join(playwrightPath, chromiumDir, executableSubPath);
+      if (browserDir) {
+        const executablePath = path.join(playwrightPath, browserDir, executableSubPath);
         if (fs.existsSync(executablePath)) {
-          console.log('✓ Found system Chromium at:', executablePath);
+          console.log(`✓ Found system ${browserType} at:`, executablePath);
           return executablePath;
         }
       }
     } catch (error) {
-      console.log('⚠ Could not find Chromium:', (error as Error).message);
+      console.log(`⚠ Could not find ${browserType}:`, (error as Error).message);
     }
 
     return null;
@@ -131,26 +154,60 @@ export class BrowserManager {
     }
 
     try {
-      const chromiumPath = this.getChromiumPath();
+      const browserPath = this.getBrowserPath(this.config.browserType);
 
-      // 브라우저 실행 옵션
+      // 브라우저 실행 옵션 (자동화 감지 우회)
       const launchOptions: any = {
         headless: headless !== undefined ? headless : this.config.headless,
-        args: ['--start-maximized']
+        args: [
+          '--start-maximized',
+          '--disable-blink-features=AutomationControlled', // 자동화 감지 비활성화
+          '--disable-dev-shm-usage',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--allow-running-insecure-content',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-infobars',
+          '--window-position=0,0',
+          '--ignore-certifcate-errors',
+          '--ignore-certifcate-errors-spki-list',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu'
+        ]
       };
 
-      if (chromiumPath) {
-        launchOptions.executablePath = chromiumPath;
+      if (browserPath) {
+        launchOptions.executablePath = browserPath;
       }
 
-      // 브라우저 시작
-      this.browser = await this.automation.launch(launchOptions);
+      // 브라우저 시작 (설정에서 browserType 전달)
+      this.browser = await this.automation.launch(launchOptions, this.config.browserType);
 
-      // 브라우저 컨텍스트 생성
+      // 실제 Chrome User-Agent (최신 버전)
+      const realChromeUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+      // 브라우저 컨텍스트 생성 (자동화 감지 우회)
       const defaultContextOptions = {
         viewport: null, // 전체 화면 사용
         ignoreHTTPSErrors: true, // HTTPS 인증서 오류 무시
-        userAgent: this.config.userAgent
+        userAgent: realChromeUserAgent, // 실제 Chrome UA 사용
+        locale: 'ko-KR',
+        timezoneId: 'Asia/Seoul',
+        permissions: ['geolocation', 'notifications'],
+        extraHTTPHeaders: {
+          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-User': '?1',
+          'Sec-Fetch-Dest': 'document',
+          'Upgrade-Insecure-Requests': '1'
+        }
       };
 
       const finalContextOptions = contextOptions
@@ -161,6 +218,57 @@ export class BrowserManager {
 
       // 새 페이지 생성
       this.page = await this.automation.newPage(this.context);
+
+      // navigator.webdriver 숨기기 및 기타 bot detection 우회
+      await this.page.addInitScript(() => {
+        // navigator.webdriver를 undefined로 설정
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined
+        });
+
+        // Chrome 객체 추가 (Headless 감지 우회)
+        (window as any).chrome = {
+          runtime: {}
+        };
+
+        // Permissions 객체 수정
+        const originalQuery = (window.navigator as any).permissions.query;
+        (window.navigator as any).permissions.query = (parameters: any) => (
+          parameters.name === 'notifications' ?
+            Promise.resolve({ state: Notification.permission }) :
+            originalQuery(parameters)
+        );
+
+        // Plugin array 추가 (빈 브라우저처럼 보이지 않도록)
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5]
+        });
+
+        // Languages 설정
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['ko-KR', 'ko', 'en-US', 'en']
+        });
+
+        // Platform 설정
+        Object.defineProperty(navigator, 'platform', {
+          get: () => 'MacIntel'
+        });
+
+        // WebGL vendor 설정 (Headless 감지 우회)
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+          if (parameter === 37445) {
+            return 'Intel Inc.';
+          }
+          if (parameter === 37446) {
+            return 'Intel Iris OpenGL Engine';
+          }
+          return getParameter.call(this, parameter);
+        };
+
+        // console.debug 비활성화 (일부 사이트에서 automation 감지에 사용)
+        console.debug = () => {};
+      });
 
       console.log('[BrowserManager] Browser started successfully');
     } catch (error) {

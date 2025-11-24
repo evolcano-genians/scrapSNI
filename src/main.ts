@@ -22,6 +22,7 @@ import { TrackingService } from './services/TrackingService';
 import { WorkflowService } from './services/WorkflowService';
 import { SNIWhitelistService } from './services/SNIWhitelistService';
 import { AnalysisOptions, WorkflowStep, SNIExportOptions } from './types';
+import { updateConfigCategory } from './config/config';
 
 /**
  * DomainTracker 클래스
@@ -104,8 +105,14 @@ class DomainTracker {
     /**
      * 수동 트래킹 시작
      */
-    ipcMain.handle('start-tracking', async () => {
+    ipcMain.handle('start-tracking', async (_event, browserType?: string) => {
       try {
+        // 브라우저 타입이 지정된 경우 설정 업데이트
+        if (browserType && (browserType === 'chromium' || browserType === 'firefox' || browserType === 'webkit')) {
+          console.log(`[IPC] Updating browser type to: ${browserType}`);
+          updateConfigCategory('browser', { browserType: browserType as any });
+        }
+
         await this.trackingService.startTracking();
         return { success: true };
       } catch (error) {
@@ -190,6 +197,149 @@ class DomainTracker {
         return { success: true };
       } catch (error) {
         console.error('[IPC Error] login-complete:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 자동 크롤링 시작 (Manual Tracking 중)
+     */
+    ipcMain.handle('start-auto-crawl', async (_event, depth: number, maxLinks: number) => {
+      try {
+        await this.trackingService.startAutoCrawling(depth, maxLinks, (message) => {
+          // 진행 상황을 렌더러에 전달
+          this.mainWindow?.webContents.send('crawl-progress', message);
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[IPC Error] start-auto-crawl:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 세션 저장
+     */
+    ipcMain.handle('save-session', async (_event, sessionPath: string) => {
+      try {
+        await this.trackingService.saveSession(sessionPath);
+        return { success: true, path: sessionPath };
+      } catch (error) {
+        console.error('[IPC Error] save-session:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 세션 로드
+     */
+    ipcMain.handle('load-session', async (_event, sessionPath: string) => {
+      try {
+        await this.trackingService.loadSession(sessionPath);
+        return { success: true, path: sessionPath };
+      } catch (error) {
+        console.error('[IPC Error] load-session:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 세션 내보내기 (사용자 지정 경로)
+     */
+    ipcMain.handle('export-session', async () => {
+      try {
+        if (!this.mainWindow) {
+          return {
+            success: false,
+            error: 'Main window not available'
+          };
+        }
+
+        // 파일 저장 다이얼로그
+        const result = await dialog.showSaveDialog(this.mainWindow, {
+          title: '세션 내보내기',
+          defaultPath: 'session.json',
+          filters: [
+            { name: 'JSON Files', extensions: ['json'] },
+            { name: 'All Files', extensions: ['*'] }
+          ]
+        });
+
+        if (result.canceled || !result.filePath) {
+          return {
+            success: false,
+            canceled: true
+          };
+        }
+
+        // 세션 저장
+        await this.trackingService.saveSession(result.filePath);
+
+        return {
+          success: true,
+          path: result.filePath
+        };
+      } catch (error) {
+        console.error('[IPC Error] export-session:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 세션 가져오기 (사용자 지정 경로)
+     */
+    ipcMain.handle('import-session', async () => {
+      try {
+        if (!this.mainWindow) {
+          return {
+            success: false,
+            error: 'Main window not available'
+          };
+        }
+
+        // 파일 열기 다이얼로그
+        const result = await dialog.showOpenDialog(this.mainWindow, {
+          title: '세션 가져오기',
+          filters: [
+            { name: 'JSON Files', extensions: ['json'] },
+            { name: 'All Files', extensions: ['*'] }
+          ],
+          properties: ['openFile']
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+          return {
+            success: false,
+            canceled: true
+          };
+        }
+
+        const filePath = result.filePaths[0];
+
+        // 세션 로드
+        await this.trackingService.loadSession(filePath);
+
+        return {
+          success: true,
+          path: filePath
+        };
+      } catch (error) {
+        console.error('[IPC Error] import-session:', error);
         return {
           success: false,
           error: (error as Error).message

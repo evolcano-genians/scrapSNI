@@ -48,7 +48,9 @@
       "mcp__memory__create_relations",
       "Bash(npm run dev:*)",
       "Bash(git commit:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(\"/Users/shinhheejoon/WebstormProjects/scrapSNI/dist/mac-arm64/Domain Tracker.app/Contents/MacOS/Domain Tracker\")",
+      "Bash(log show:*)"
     ],
     "deny": [],
     "ask": []
