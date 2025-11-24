@@ -89,7 +89,7 @@ export class PlaywrightAdapter implements IBrowserAutomation {
     const contextOptions: any = {};
 
     if (options) {
-      // viewport 설정
+      // viewport 설정/
       if (options.viewport !== undefined) {
         contextOptions.viewport = options.viewport;
       }

@@ -17,6 +17,7 @@ import { PageInteractor } from '../services/PageInteractor';
 import { TrackingService } from '../services/TrackingService';
 import { WorkflowService } from '../services/WorkflowService';
 import { SNIWhitelistService } from '../services/SNIWhitelistService';
+import { DomainBlockTester } from '../services/DomainBlockTester';
 
 /**
  * AppModule
@@ -43,12 +44,14 @@ import { SNIWhitelistService } from '../services/SNIWhitelistService';
     PageInteractor,
     TrackingService,
     WorkflowService,
-    SNIWhitelistService
+    SNIWhitelistService,
+    DomainBlockTester
   ],
   exports: [
     TrackingService,
     WorkflowService,
-    SNIWhitelistService
+    SNIWhitelistService,
+    DomainBlockTester
   ]
 })
 export class AppModule {}

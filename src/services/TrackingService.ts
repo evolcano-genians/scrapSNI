@@ -80,11 +80,20 @@ export class TrackingService {
    *
    * 사용자가 직접 브라우저를 조작하면서 도메인을 수집합니다.
    */
-  async startTracking(): Promise<void> {
+  async startTracking(blockedDomains?: string[]): Promise<void> {
     console.log('[TrackingService] Starting manual tracking...');
 
     if (this.browserManager.isRunning()) {
       throw new Error('Tracking is already in progress');
+    }
+
+    // 차단할 도메인 목록 정규화
+    const normalizedBlockedDomains = blockedDomains
+      ? new Set(blockedDomains.map(d => d.trim().toLowerCase()).filter(d => d.length > 0))
+      : null;
+
+    if (normalizedBlockedDomains && normalizedBlockedDomains.size > 0) {
+      console.log('[TrackingService] Domain blocking enabled:', Array.from(normalizedBlockedDomains));
     }
 
     try {
@@ -93,6 +102,11 @@ export class TrackingService {
 
       const page = this.browserManager.getPage();
       const context = this.browserManager.getContext();
+
+      // 도메인 차단 설정 (초기 페이지)
+      if (normalizedBlockedDomains && normalizedBlockedDomains.size > 0) {
+        await this.setupDomainBlocking(page, normalizedBlockedDomains);
+      }
 
       // 네트워크 모니터링 시작 (초기 페이지)
       this.networkMonitor.startMonitoring(page);
@@ -105,8 +119,14 @@ export class TrackingService {
       });
 
       // 새로 생성되는 모든 페이지/탭에 대해 자동으로 모니터링 시작
-      context.on('page', (newPage) => {
+      context.on('page', async (newPage) => {
         console.log('[TrackingService] New tab/page detected, starting monitoring...');
+
+        // 새 탭에도 도메인 차단 설정
+        if (normalizedBlockedDomains && normalizedBlockedDomains.size > 0) {
+          await this.setupDomainBlocking(newPage, normalizedBlockedDomains);
+        }
+
         this.networkMonitor.startMonitoring(newPage);
 
         // 새 탭에도 navigation 로깅 추가
@@ -453,6 +473,81 @@ export class TrackingService {
   }
 
   /**
+   * 페이지에 도메인 차단 설정을 적용합니다.
+   *
+   * @param page - Playwright Page 객체
+   * @param blockedDomains - 차단할 도메인 목록 (정규화된 Set)
+   */
+  private async setupDomainBlocking(page: any, blockedDomains: Set<string>): Promise<void> {
+    await page.route('**/*', (route: any) => {
+      try {
+        const url = route.request().url();
+        const domain = this.extractDomain(url);
+        const shouldBlock = this.shouldBlockDomain(domain, blockedDomains);
+
+        if (shouldBlock) {
+          console.log(`[TrackingService] Blocking domain: ${domain}`);
+          route.abort('blockedbyclient');
+        } else {
+          route.continue();
+        }
+      } catch (error) {
+        console.error('[TrackingService] Route error:', error);
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * URL에서 도메인을 추출합니다.
+   *
+   * @param url - URL
+   * @returns 도메인 (소문자)
+   */
+  private extractDomain(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname.toLowerCase();
+    } catch (error) {
+      return '';
+    }
+  }
+
+  /**
+   * 도메인을 차단해야 하는지 판단합니다.
+   *
+   * @param domain - 도메인
+   * @param blockedDomains - 차단할 도메인 목록
+   * @returns 차단 여부
+   */
+  private shouldBlockDomain(domain: string, blockedDomains: Set<string>): boolean {
+    const normalizedDomain = domain.toLowerCase();
+
+    // 정확한 매칭
+    if (blockedDomains.has(normalizedDomain)) {
+      return true;
+    }
+
+    // 와일드카드 매칭
+    for (const pattern of blockedDomains) {
+      if (pattern.startsWith('*.')) {
+        // 와일드카드 패턴 (예: *.example.com)
+        const suffix = pattern.substring(2);
+        if (normalizedDomain.endsWith(suffix) || normalizedDomain === suffix.substring(1)) {
+          return true;
+        }
+      } else if (pattern.startsWith('.')) {
+        // 서브도메인 포함 (예: .example.com)
+        if (normalizedDomain.endsWith(pattern) || normalizedDomain === pattern.substring(1)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Manual Tracking 중에 현재 페이지부터 자동 크롤링을 시작합니다.
    *
    * @param depth - 크롤링 깊이 (0-3)
@@ -642,5 +737,44 @@ export class TrackingService {
     this.networkMonitor.clear();
     this.webCrawler.clear();
     console.log('[TrackingService] Cleanup complete');
+  }
+
+  /**
+   * 5-tuple 연결 로그를 tcpdump 형식으로 내보냅니다.
+   *
+   * @returns tcpdump 형식의 로그 문자열
+   */
+  export5TupleLogs(): string {
+    console.log('[TrackingService] Exporting 5-tuple logs...');
+
+    const logs = this.networkMonitor.getFiveTupleLogs();
+
+    if (logs.length === 0) {
+      return '# No 5-tuple connection logs available\n';
+    }
+
+    // 헤더 생성
+    let output = '# TCP 5-Tuple Connection Log\n';
+    output += `# Generated: ${new Date().toISOString()}\n`;
+    output += `# Total Connections: ${logs.length}\n`;
+    output += '#\n';
+    output += '# Format: Timestamp | Source IP:Port | Destination IP:Port | Protocol | Method | Resource Type | Domain | URL\n';
+    output += '#\n\n';
+
+    // 각 로그 항목 포맷팅
+    logs.forEach((log, index) => {
+      const timestamp = new Date(log.timestamp).toISOString();
+      const source = `${log.sourceIp}:${log.sourcePort}`;
+      const destination = `${log.destinationIp}:${log.destinationPort}`;
+
+      // tcpdump 스타일 한 줄 형식
+      output += `${timestamp} | ${source} > ${destination} | ${log.protocol} | ${log.method} | ${log.resourceType} | ${log.domain} | ${log.url}\n`;
+    });
+
+    output += `\n# Total: ${logs.length} connections\n`;
+
+    console.log(`[TrackingService] Exported ${logs.length} 5-tuple logs`);
+
+    return output;
   }
 }

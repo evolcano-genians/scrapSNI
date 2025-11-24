@@ -472,3 +472,104 @@ export type PartiallyRequired<T, K extends keyof T> = Omit<T, K> & Required<Pick
 export type DeepReadonly<T> = {
   readonly [P in keyof T]: T[P] extends object ? DeepReadonly<T[P]> : T[P];
 };
+
+// ==================== 도메인 차단 테스트 관련 타입 ====================
+
+/**
+ * 차단 모드 타입
+ */
+export type BlockMode = 'blacklist' | 'whitelist';
+
+/**
+ * 차단 테스트 옵션
+ */
+export interface BlockTestOptions {
+  url: string;                      // 테스트할 URL
+  mode: BlockMode;                  // 차단 모드
+  domains: string[];                // 차단/허용할 도메인 목록
+  captureScreenshot?: boolean;      // 스크린샷 캡처 여부
+  captureConsoleErrors?: boolean;   // 콘솔 에러 캡처 여부
+  waitTime?: number;                // 대기 시간 (밀리초)
+}
+
+/**
+ * 차단된 요청 정보
+ */
+export interface BlockedRequest {
+  url: string;          // 요청 URL
+  domain: string;       // 도메인
+  type: ResourceType;   // 리소스 타입
+  timestamp: string;    // 타임스탬프
+}
+
+/**
+ * 허용된 요청 정보
+ */
+export interface AllowedRequest {
+  url: string;          // 요청 URL
+  domain: string;       // 도메인
+  type: ResourceType;   // 리소스 타입
+  timestamp: string;    // 타임스탬프
+}
+
+/**
+ * 페이지 에러 정보
+ */
+export interface PageError {
+  message: string;      // 에러 메시지
+  source?: string;      // 에러 발생 소스
+  line?: number;        // 라인 번호
+  column?: number;      // 컬럼 번호
+  stack?: string;       // 스택 트레이스
+  timestamp: string;    // 타임스탬프
+}
+
+/**
+ * 차단 테스트 결과
+ */
+export interface BlockTestResult {
+  success: boolean;                 // 테스트 성공 여부
+  url: string;                      // 테스트한 URL
+  mode: BlockMode;                  // 차단 모드
+  timestamp: string;                // 테스트 시각
+
+  // 통계
+  totalRequests: number;            // 총 요청 수
+  blockedRequests: number;          // 차단된 요청 수
+  allowedRequests: number;          // 허용된 요청 수
+  pageErrors: number;               // 페이지 에러 수
+
+  // 상세 정보
+  blocked: BlockedRequest[];        // 차단된 요청 목록
+  allowed: AllowedRequest[];        // 허용된 요청 목록
+  errors: PageError[];              // 페이지 에러 목록
+
+  // 스크린샷
+  screenshot?: string;              // 스크린샷 (base64)
+
+  // 에러 메시지 (실패 시)
+  error?: string;
+}
+
+// ==================== TCP 5-tuple Connection Log ====================
+
+/**
+ * TCP 5-tuple Connection 정보
+ *
+ * 네트워크 연결의 5가지 주요 정보:
+ * - Source IP/Port: 클라이언트 (로컬)
+ * - Destination IP/Port: 서버 (원격)
+ * - Protocol: TCP/UDP
+ */
+export interface FiveTupleConnection {
+  timestamp: string;          // 연결 시간
+  sourceIp: string;           // Source IP (클라이언트)
+  sourcePort: number;         // Source Port (클라이언트)
+  destinationIp: string;      // Destination IP (서버)
+  destinationPort: number;    // Destination Port (서버)
+  protocol: string;           // Protocol (TCP/UDP/HTTP/HTTPS)
+  url: string;                // 요청 URL
+  domain: string;             // 도메인
+  method: string;             // HTTP Method (GET, POST, etc.)
+  resourceType: ResourceType; // 리소스 타입
+}

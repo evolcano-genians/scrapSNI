@@ -5,6 +5,7 @@ const exportDomainsBtn = document.getElementById('exportDomainsBtn');
 const exportIPsBtn = document.getElementById('exportIPsBtn');
 const exportSNIWhitelistBtn = document.getElementById('exportSNIWhitelistBtn');
 const exportDetailedBtn = document.getElementById('exportDetailedBtn');
+const export5TupleLogsBtn = document.getElementById('export5TupleLogsBtn');
 const clearBtn = document.getElementById('clearBtn');
 
 // 크롤링 옵션
@@ -32,6 +33,8 @@ const elapsedTime = document.getElementById('elapsedTime');
 const sessionStatus = document.getElementById('sessionStatus');
 const searchBox = document.getElementById('searchBox');
 const loadingSpinner = document.getElementById('loadingSpinner');
+const blockDomainsInput = document.getElementById('blockDomainsInput');
+const importBlockDomainsBtn = document.getElementById('importBlockDomainsBtn');
 
 // DOM 요소들 - 자동 분석 탭
 const urlInput = document.getElementById('urlInput');
@@ -60,6 +63,37 @@ const clearAutoBtn = document.getElementById('clearAutoBtn');
 const autoDomainsList = document.getElementById('autoDomainsList');
 const autoSearchBox = document.getElementById('autoSearchBox');
 
+// DOM 요소들 - 차단 테스트 탭
+const blockTestUrl = document.getElementById('blockTestUrl');
+const blockMode = document.getElementById('blockMode');
+const blockDomains = document.getElementById('blockDomains');
+const blockDomainsLabel = document.getElementById('blockDomainsLabel');
+const captureScreenshot = document.getElementById('captureScreenshot');
+const captureConsoleErrors = document.getElementById('captureConsoleErrors');
+const blockTestWaitTime = document.getElementById('blockTestWaitTime');
+const startBlockTestBtn = document.getElementById('startBlockTestBtn');
+const stopBlockTestBtn = document.getElementById('stopBlockTestBtn');
+const blockTestStatus = document.getElementById('blockTestStatus');
+const blockTestResults = document.getElementById('blockTestResults');
+const totalRequests = document.getElementById('totalRequests');
+const blockedRequests = document.getElementById('blockedRequests');
+const allowedRequests = document.getElementById('allowedRequests');
+const pageErrors = document.getElementById('pageErrors');
+const blockedCount = document.getElementById('blockedCount');
+const allowedCount = document.getElementById('allowedCount');
+const errorCount = document.getElementById('errorCount');
+const blockedRequestsList = document.getElementById('blockedRequestsList');
+const allowedRequestsList = document.getElementById('allowedRequestsList');
+const pageErrorsList = document.getElementById('pageErrorsList');
+const screenshotSection = document.getElementById('screenshotSection');
+const screenshotImage = document.getElementById('screenshotImage');
+const exportBlockTestResultBtn = document.getElementById('exportBlockTestResultBtn');
+const exportBlockTestReportBtn = document.getElementById('exportBlockTestReportBtn');
+
+// 상태 변수들 - 차단 테스트
+let isBlockTestRunning = false;
+let blockTestResult = null;
+
 // 상태 변수들 - 수동 트래킹
 let isTracking = false;
 let domains = [];
@@ -87,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkTrackingStatus();
   checkSavedSession(); // 저장된 세션 확인
   setupCrawlProgressListener(); // 크롤링 진행 상황 리스너 설정
+  initializeViewer(); // 5-Tuple 뷰어 초기화
 });
 
 // 이벤트 리스너 설정
@@ -98,6 +133,7 @@ function initializeEventListeners() {
   exportIPsBtn.addEventListener('click', exportIPsList);
   exportSNIWhitelistBtn.addEventListener('click', exportSNIWhitelist);
   exportDetailedBtn.addEventListener('click', exportDomainsDetailed);
+  export5TupleLogsBtn.addEventListener('click', export5TupleLogs);
   clearBtn.addEventListener('click', clearDomains);
   searchBox.addEventListener('input', filterDomains);
   ipSearchBox.addEventListener('input', filterIPs);
@@ -111,6 +147,9 @@ function initializeEventListeners() {
   clearSessionBtn.addEventListener('click', clearSavedSession);
   exportSessionBtn.addEventListener('click', exportSession);
   importSessionBtn.addEventListener('click', importSession);
+
+  // 차단 도메인 파일 가져오기
+  importBlockDomainsBtn.addEventListener('click', importBlockDomains);
 
   // 자동 분석 탭
   analyzeBtn.addEventListener('click', analyzeUrl);
@@ -138,6 +177,13 @@ function initializeEventListeners() {
       urlInput.select();
     }
   });
+
+  // 차단 테스트 탭
+  startBlockTestBtn.addEventListener('click', startBlockTest);
+  stopBlockTestBtn.addEventListener('click', stopBlockTest);
+  blockMode.addEventListener('change', updateBlockModeLabel);
+  exportBlockTestResultBtn.addEventListener('click', exportBlockTestResult);
+  exportBlockTestReportBtn.addEventListener('click', exportBlockTestReport);
 
   // 탭 전환
   document.querySelectorAll('.tab-button').forEach(button => {
@@ -171,7 +217,15 @@ async function startTracking() {
     const browserSelect = document.getElementById('browserSelect');
     const browserType = browserSelect ? browserSelect.value : 'chromium';
 
-    const result = await window.electronAPI.startTracking(browserType);
+    // 차단할 도메인 목록 가져오기
+    const blockedDomains = blockDomainsInput.value
+      .split('\n')
+      .map(d => d.trim())
+      .filter(d => d.length > 0);
+
+    console.log('[startTracking] Blocked domains:', blockedDomains);
+
+    const result = await window.electronAPI.startTracking(browserType, blockedDomains);
 
     if (result.success) {
       isTracking = true;
@@ -330,6 +384,30 @@ async function exportDomainsDetailed() {
     content,
     `파일이 저장되었습니다:\n${filename}`
   );
+}
+
+// 5-tuple 로그 내보내기 (수동 트래킹)
+async function export5TupleLogs() {
+  try {
+    console.log('[export5TupleLogs] Starting export...');
+
+    const result = await window.electronAPI.export5TupleLogs();
+
+    if (result.canceled) {
+      console.log('[export5TupleLogs] User canceled');
+      return;
+    }
+
+    if (result.success) {
+      alert(`5-Tuple 로그가 성공적으로 저장되었습니다:\n${result.filePath}`);
+      console.log('[export5TupleLogs] Success:', result.filePath);
+    } else {
+      throw new Error(result.error || '알 수 없는 오류');
+    }
+  } catch (error) {
+    console.error('[export5TupleLogs] Error:', error);
+    alert(`5-Tuple 로그 내보내기 실패:\n${error.message}`);
+  }
 }
 
 // 도메인 목록 초기화
@@ -521,6 +599,7 @@ function updateUI() {
   exportDetailedBtn.disabled = !hasData;
   exportIPsBtn.disabled = ips.length === 0;
   exportSNIWhitelistBtn.disabled = !hasAnyData;
+  export5TupleLogsBtn.disabled = false; // 5-tuple 로그는 항상 내보낼 수 있음
 
   // 상태 표시기 업데이트
   statusIndicator.className = `status-indicator ${isTracking ? 'active' : 'inactive'}`;
@@ -1122,7 +1201,13 @@ function switchTab(tabName) {
 
   // 선택된 탭 활성화
   document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-  document.getElementById(`${tabName}-tab`).classList.add('active');
+  const activeTabContent = document.getElementById(`${tabName}-tab`);
+  activeTabContent.classList.add('active');
+
+  // 스크롤을 상단으로 리셋
+  setTimeout(() => {
+    activeTabContent.scrollTop = 0;
+  }, 0);
 
   // 자동 분석 탭으로 전환 시 URL 입력 필드에 포커스
   if (tabName === 'auto') {
@@ -2724,4 +2809,987 @@ async function exportWorkflowDetailed() {
     content,
     `파일이 저장되었습니다:\n${filename}`
   );
+}
+
+// ==================== 차단 테스트 탭 기능 ====================
+
+/**
+ * 블랙리스트/화이트리스트 모드에 따라 라벨 텍스트 업데이트
+ */
+function updateBlockModeLabel() {
+  const mode = blockMode.value;
+  if (mode === 'blacklist') {
+    blockDomainsLabel.textContent = '차단할 도메인 목록 (한 줄에 하나씩):';
+    blockDomainsDescription.textContent = '아래 도메인으로의 요청이 차단됩니다. 나머지는 모두 허용됩니다.';
+  } else {
+    blockDomainsLabel.textContent = '허용할 도메인 목록 (한 줄에 하나씩):';
+    blockDomainsDescription.textContent = '아래 도메인으로의 요청만 허용됩니다. 나머지는 모두 차단됩니다.';
+  }
+}
+
+/**
+ * 차단 테스트 시작
+ */
+async function startBlockTest() {
+  // 유효성 검사
+  const url = blockTestUrl.value.trim();
+  if (!url) {
+    alert('테스트할 URL을 입력해주세요.');
+    return;
+  }
+
+  // URL 형식 검사
+  try {
+    new URL(url);
+  } catch (error) {
+    alert('올바른 URL 형식이 아닙니다. (예: https://example.com)');
+    return;
+  }
+
+  // 도메인 목록 파싱
+  const domainList = blockDomains.value
+    .split('\n')
+    .map(d => d.trim())
+    .filter(d => d.length > 0);
+
+  if (domainList.length === 0) {
+    alert('최소 1개 이상의 도메인을 입력해주세요.');
+    return;
+  }
+
+  // 옵션 수집
+  const options = {
+    url,
+    mode: blockMode.value,
+    domains: domainList,
+    captureScreenshot: captureScreenshot.checked,
+    captureConsoleErrors: captureConsoleErrors.checked,
+    waitTime: parseInt(blockTestWaitTime.value) || 5000
+  };
+
+  // UI 상태 변경
+  isBlockTestRunning = true;
+  startBlockTestBtn.disabled = true;
+  stopBlockTestBtn.disabled = false;
+  blockTestUrl.disabled = true;
+  blockMode.disabled = true;
+  blockDomains.disabled = true;
+  captureScreenshot.disabled = true;
+  captureConsoleErrors.disabled = true;
+  blockTestWaitTime.disabled = true;
+  blockTestStatus.textContent = '테스트 진행 중...';
+  blockTestStatus.className = 'status running';
+  blockTestResults.style.display = 'none';
+
+  try {
+    console.log('[BlockTest] Starting test:', options);
+
+    // API 호출
+    const result = await window.electronAPI.runBlockTest(options);
+
+    console.log('[BlockTest] Test completed:', result);
+
+    // 결과 저장 및 표시
+    blockTestResult = result;
+    displayBlockTestResult(result);
+
+    if (result.success) {
+      blockTestStatus.textContent = '테스트 완료';
+      blockTestStatus.className = 'status success';
+    } else {
+      blockTestStatus.textContent = `테스트 실패: ${result.error || '알 수 없는 오류'}`;
+      blockTestStatus.className = 'status error';
+    }
+  } catch (error) {
+    console.error('[BlockTest] Error:', error);
+    blockTestStatus.textContent = `오류: ${error.message}`;
+    blockTestStatus.className = 'status error';
+    alert(`테스트 중 오류가 발생했습니다:\n${error.message}`);
+  } finally {
+    // UI 상태 복원
+    isBlockTestRunning = false;
+    startBlockTestBtn.disabled = false;
+    stopBlockTestBtn.disabled = true;
+    blockTestUrl.disabled = false;
+    blockMode.disabled = false;
+    blockDomains.disabled = false;
+    captureScreenshot.disabled = false;
+    captureConsoleErrors.disabled = false;
+    blockTestWaitTime.disabled = false;
+  }
+}
+
+/**
+ * 차단 테스트 중지
+ */
+async function stopBlockTest() {
+  if (!isBlockTestRunning) {
+    return;
+  }
+
+  try {
+    console.log('[BlockTest] Stopping test...');
+    const result = await window.electronAPI.stopBlockTest();
+
+    if (result.success) {
+      blockTestStatus.textContent = '테스트 중지됨';
+      blockTestStatus.className = 'status';
+    } else {
+      console.error('[BlockTest] Stop failed:', result.error);
+    }
+  } catch (error) {
+    console.error('[BlockTest] Stop error:', error);
+  }
+}
+
+/**
+ * 차단 테스트 결과 표시
+ */
+function displayBlockTestResult(result) {
+  if (!result.success) {
+    blockTestResults.style.display = 'block';
+    blockTestSummary.innerHTML = `
+      <div class="error-message">
+        <strong>❌ 테스트 실패</strong><br>
+        ${result.error || '알 수 없는 오류'}
+      </div>
+    `;
+    return;
+  }
+
+  // 요약 정보
+  const successRate = result.totalRequests > 0
+    ? ((result.allowedRequests / result.totalRequests) * 100).toFixed(1)
+    : 0;
+
+  blockTestSummary.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">총 요청</div>
+        <div class="summary-value">${result.totalRequests}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">차단됨</div>
+        <div class="summary-value text-danger">${result.blockedRequests}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">허용됨</div>
+        <div class="summary-value text-success">${result.allowedRequests}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">페이지 에러</div>
+        <div class="summary-value text-warning">${result.pageErrors}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">성공률</div>
+        <div class="summary-value">${successRate}%</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">모드</div>
+        <div class="summary-value">${result.mode === 'blacklist' ? '블랙리스트' : '화이트리스트'}</div>
+      </div>
+    </div>
+  `;
+
+  // 차단된 요청 목록
+  if (result.blocked.length > 0) {
+    const blockedHTML = result.blocked.map(req => `
+      <div class="request-item blocked">
+        <div class="request-domain">${req.domain}</div>
+        <div class="request-type">${req.type}</div>
+        <div class="request-url">${req.url}</div>
+      </div>
+    `).join('');
+    blockTestBlockedList.innerHTML = blockedHTML;
+  } else {
+    blockTestBlockedList.innerHTML = '<div class="empty-message">차단된 요청이 없습니다.</div>';
+  }
+
+  // 허용된 요청 목록
+  if (result.allowed.length > 0) {
+    const allowedHTML = result.allowed.map(req => `
+      <div class="request-item allowed">
+        <div class="request-domain">${req.domain}</div>
+        <div class="request-type">${req.type}</div>
+        <div class="request-url">${req.url}</div>
+      </div>
+    `).join('');
+    blockTestAllowedList.innerHTML = allowedHTML;
+  } else {
+    blockTestAllowedList.innerHTML = '<div class="empty-message">허용된 요청이 없습니다.</div>';
+  }
+
+  // 페이지 에러 목록
+  if (result.errors.length > 0) {
+    const errorsHTML = result.errors.map(err => `
+      <div class="error-item">
+        <div class="error-message">${err.message}</div>
+        ${err.stack ? `<div class="error-stack">${err.stack}</div>` : ''}
+        <div class="error-timestamp">${new Date(err.timestamp).toLocaleString()}</div>
+      </div>
+    `).join('');
+    blockTestErrorsList.innerHTML = errorsHTML;
+    blockTestErrorsSection.style.display = 'block';
+  } else {
+    blockTestErrorsSection.style.display = 'none';
+  }
+
+  // 스크린샷
+  if (result.screenshot) {
+    blockTestScreenshotImg.src = `data:image/png;base64,${result.screenshot}`;
+    blockTestScreenshotSection.style.display = 'block';
+  } else {
+    blockTestScreenshotSection.style.display = 'none';
+  }
+
+  // 결과 패널 표시
+  blockTestResults.style.display = 'block';
+
+  // Export 버튼 활성화
+  exportBlockTestResultBtn.disabled = false;
+  exportBlockTestReportBtn.disabled = false;
+}
+
+/**
+ * 차단 테스트 결과를 JSON으로 내보내기
+ */
+async function exportBlockTestResult() {
+  if (!blockTestResult) {
+    alert('내보낼 테스트 결과가 없습니다.');
+    return;
+  }
+
+  try {
+    // 스크린샷 제외 (파일 크기 때문)
+    const exportData = {
+      ...blockTestResult,
+      screenshot: undefined
+    };
+
+    const json = JSON.stringify(exportData, null, 2);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const filename = `block-test-result-${timestamp}.json`;
+
+    const result = await window.electronAPI.saveFile(filename, json);
+
+    if (result.success) {
+      alert(`결과가 JSON으로 저장되었습니다:\n${result.filePath}`);
+    } else if (!result.canceled) {
+      alert(`저장 실패: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[BlockTest] Export error:', error);
+    alert(`내보내기 중 오류가 발생했습니다:\n${error.message}`);
+  }
+}
+
+/**
+ * 차단 테스트 결과를 HTML 리포트로 내보내기
+ */
+async function exportBlockTestReport() {
+  if (!blockTestResult) {
+    alert('내보낼 테스트 결과가 없습니다.');
+    return;
+  }
+
+  try {
+    const result = blockTestResult;
+    const timestamp = new Date(result.timestamp).toLocaleString();
+    const successRate = result.totalRequests > 0
+      ? ((result.allowedRequests / result.totalRequests) * 100).toFixed(1)
+      : 0;
+
+    // HTML 리포트 생성
+    let html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>도메인 차단 테스트 리포트</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           padding: 20px; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; background: white;
+                 padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    .meta { color: #7f8c8d; margin-bottom: 30px; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+               gap: 15px; margin-bottom: 30px; }
+    .summary-card { background: #ecf0f1; padding: 15px; border-radius: 6px; text-align: center; }
+    .summary-label { font-size: 12px; color: #7f8c8d; margin-bottom: 5px; }
+    .summary-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+    .text-danger { color: #e74c3c; }
+    .text-success { color: #27ae60; }
+    .text-warning { color: #f39c12; }
+    .section { margin-bottom: 30px; }
+    .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px;
+                     padding-bottom: 10px; border-bottom: 2px solid #3498db; }
+    .request-list { max-height: 400px; overflow-y: auto; }
+    .request-item { padding: 10px; margin-bottom: 8px; background: #f8f9fa;
+                    border-left: 3px solid #3498db; border-radius: 4px; }
+    .request-item.blocked { border-left-color: #e74c3c; }
+    .request-item.allowed { border-left-color: #27ae60; }
+    .request-domain { font-weight: bold; margin-bottom: 4px; }
+    .request-type { display: inline-block; padding: 2px 8px; background: #3498db;
+                    color: white; border-radius: 3px; font-size: 11px; margin-bottom: 4px; }
+    .request-url { font-size: 12px; color: #7f8c8d; word-break: break-all; }
+    .error-item { padding: 10px; margin-bottom: 8px; background: #fee;
+                  border-left: 3px solid #e74c3c; border-radius: 4px; }
+    .error-message { font-weight: bold; color: #c0392b; margin-bottom: 4px; }
+    .error-stack { font-size: 11px; color: #7f8c8d; font-family: monospace;
+                   white-space: pre-wrap; margin-top: 4px; }
+    .screenshot { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+    .empty { color: #95a5a6; font-style: italic; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚫 도메인 차단 테스트 리포트</h1>
+    <div class="meta">
+      <div><strong>URL:</strong> ${result.url}</div>
+      <div><strong>모드:</strong> ${result.mode === 'blacklist' ? '블랙리스트' : '화이트리스트'}</div>
+      <div><strong>테스트 시간:</strong> ${timestamp}</div>
+    </div>
+
+    <div class="summary">
+      <div class="summary-card">
+        <div class="summary-label">총 요청</div>
+        <div class="summary-value">${result.totalRequests}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">차단됨</div>
+        <div class="summary-value text-danger">${result.blockedRequests}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">허용됨</div>
+        <div class="summary-value text-success">${result.allowedRequests}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">페이지 에러</div>
+        <div class="summary-value text-warning">${result.pageErrors}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">성공률</div>
+        <div class="summary-value">${successRate}%</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🚫 차단된 요청 (${result.blockedRequests}개)</div>
+      <div class="request-list">`;
+
+    if (result.blocked.length > 0) {
+      result.blocked.forEach(req => {
+        html += `
+        <div class="request-item blocked">
+          <div class="request-domain">${req.domain}</div>
+          <span class="request-type">${req.type}</span>
+          <div class="request-url">${req.url}</div>
+        </div>`;
+      });
+    } else {
+      html += '<div class="empty">차단된 요청이 없습니다.</div>';
+    }
+
+    html += `
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">✅ 허용된 요청 (${result.allowedRequests}개)</div>
+      <div class="request-list">`;
+
+    if (result.allowed.length > 0) {
+      result.allowed.forEach(req => {
+        html += `
+        <div class="request-item allowed">
+          <div class="request-domain">${req.domain}</div>
+          <span class="request-type">${req.type}</span>
+          <div class="request-url">${req.url}</div>
+        </div>`;
+      });
+    } else {
+      html += '<div class="empty">허용된 요청이 없습니다.</div>';
+    }
+
+    html += `
+      </div>
+    </div>`;
+
+    if (result.errors.length > 0) {
+      html += `
+    <div class="section">
+      <div class="section-title">⚠️ 페이지 에러 (${result.pageErrors}개)</div>
+      <div class="request-list">`;
+
+      result.errors.forEach(err => {
+        html += `
+        <div class="error-item">
+          <div class="error-message">${err.message}</div>
+          ${err.stack ? `<div class="error-stack">${err.stack}</div>` : ''}
+        </div>`;
+      });
+
+      html += `
+      </div>
+    </div>`;
+    }
+
+    if (result.screenshot) {
+      html += `
+    <div class="section">
+      <div class="section-title">📸 스크린샷</div>
+      <img src="data:image/png;base64,${result.screenshot}" alt="스크린샷" class="screenshot">
+    </div>`;
+    }
+
+    html += `
+  </div>
+</body>
+</html>`;
+
+    // 파일 저장
+    const fileTimestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const filename = `block-test-report-${fileTimestamp}.html`;
+
+    const saveResult = await window.electronAPI.saveFile(filename, html);
+
+    if (saveResult.success) {
+      alert(`리포트가 HTML으로 저장되었습니다:\n${saveResult.filePath}`);
+    } else if (!saveResult.canceled) {
+      alert(`저장 실패: ${saveResult.error}`);
+    }
+  } catch (error) {
+    console.error('[BlockTest] Export report error:', error);
+    alert(`리포트 내보내기 중 오류가 발생했습니다:\n${error.message}`);
+  }
+}
+
+/**
+ * 파일에서 차단 도메인 목록 가져오기
+ */
+async function importBlockDomains() {
+  try {
+    const result = await window.electronAPI.importBlockDomains();
+
+    if (result.canceled) {
+      console.log('[ImportBlockDomains] User canceled');
+      return;
+    }
+
+    if (result.success && result.content) {
+      // 기존 내용이 있으면 추가할지 물어보기
+      const currentContent = blockDomainsInput.value.trim();
+
+      if (currentContent.length > 0) {
+        const addMode = confirm(
+          '기존에 입력된 도메인이 있습니다.\n\n' +
+          '확인: 파일 내용을 추가합니다\n' +
+          '취소: 기존 내용을 지우고 파일 내용으로 교체합니다'
+        );
+
+        if (addMode) {
+          // 추가 모드: 기존 내용 + 새 내용
+          blockDomainsInput.value = currentContent + '\n' + result.content;
+        } else {
+          // 교체 모드: 새 내용으로 덮어쓰기
+          blockDomainsInput.value = result.content;
+        }
+      } else {
+        // 기존 내용이 없으면 바로 설정
+        blockDomainsInput.value = result.content;
+      }
+
+      // 중복 제거 및 정리
+      const lines = blockDomainsInput.value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      const uniqueLines = [...new Set(lines)];
+      blockDomainsInput.value = uniqueLines.join('\n');
+
+      alert(`${uniqueLines.length}개의 도메인을 불러왔습니다.`);
+      console.log('[ImportBlockDomains] Imported domains:', uniqueLines.length);
+    } else {
+      throw new Error(result.error || '파일을 읽을 수 없습니다');
+    }
+  } catch (error) {
+    console.error('[ImportBlockDomains] Error:', error);
+    alert(`도메인 파일 가져오기 실패:\n${error.message}`);
+  }
+}
+
+
+// ==================== 수동 트래킹 탭 - 도메인 차단 테스트 ====================
+
+
+// ==================== 5-Tuple 뷰어 탭 ====================
+
+// DOM 요소 참조
+let loadLogFileBtn;
+let logFileStatus;
+let clearViewerBtn;
+let viewerStats;
+let viewerFilters;
+let viewerModePanel;
+let viewerDetailView;
+let viewerAggregateView;
+let statTotalConnections;
+let statUniqueDomains;
+let statUniqueIPs;
+let statProtocols;
+let filterDomain;
+let filterProtocol;
+let filterMethod;
+let filterResourceType;
+let filterIP;
+let filterPortMin;
+let filterPortMax;
+let applyFiltersBtn;
+let resetFiltersBtn;
+let viewModeDetail;
+let viewModeAggregate;
+let viewerResultCount;
+let viewerDetailBody;
+let viewerAggregateBody;
+
+// 전역 변수
+let loadedLogData = []; // 원본 로그 데이터
+let filteredLogData = []; // 필터링된 데이터
+let currentViewMode = 'detail'; // 'detail' 또는 'aggregate'
+
+// 5-Tuple 뷰어 초기화
+function initializeViewer() {
+  console.log('[Viewer] Initializing 5-Tuple Viewer...');
+
+  // DOM 요소 가져오기
+  loadLogFileBtn = document.getElementById('loadLogFileBtn');
+  logFileStatus = document.getElementById('logFileStatus');
+  clearViewerBtn = document.getElementById('clearViewerBtn');
+  viewerStats = document.getElementById('viewerStats');
+  viewerFilters = document.getElementById('viewerFilters');
+  viewerModePanel = document.getElementById('viewerModePanel');
+  viewerDetailView = document.getElementById('viewerDetailView');
+  viewerAggregateView = document.getElementById('viewerAggregateView');
+  statTotalConnections = document.getElementById('statTotalConnections');
+  statUniqueDomains = document.getElementById('statUniqueDomains');
+  statUniqueIPs = document.getElementById('statUniqueIPs');
+  statProtocols = document.getElementById('statProtocols');
+  filterDomain = document.getElementById('filterDomain');
+  filterProtocol = document.getElementById('filterProtocol');
+  filterMethod = document.getElementById('filterMethod');
+  filterResourceType = document.getElementById('filterResourceType');
+  filterIP = document.getElementById('filterIP');
+  filterPortMin = document.getElementById('filterPortMin');
+  filterPortMax = document.getElementById('filterPortMax');
+  applyFiltersBtn = document.getElementById('applyFiltersBtn');
+  resetFiltersBtn = document.getElementById('resetFiltersBtn');
+  viewModeDetail = document.getElementById('viewModeDetail');
+  viewModeAggregate = document.getElementById('viewModeAggregate');
+  viewerResultCount = document.getElementById('viewerResultCount');
+  viewerDetailBody = document.getElementById('viewerDetailBody');
+  viewerAggregateBody = document.getElementById('viewerAggregateBody');
+
+  // 이벤트 리스너 등록
+  if (loadLogFileBtn) {
+    loadLogFileBtn.addEventListener('click', loadLogFile);
+  }
+  if (clearViewerBtn) {
+    clearViewerBtn.addEventListener('click', clearViewer);
+  }
+  if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', applyFilters);
+  }
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener('click', resetFilters);
+  }
+  if (viewModeDetail) {
+    viewModeDetail.addEventListener('click', () => switchViewMode('detail'));
+  }
+  if (viewModeAggregate) {
+    viewModeAggregate.addEventListener('click', () => switchViewMode('aggregate'));
+  }
+
+  // Enter 키로 필터 적용
+  [filterDomain, filterProtocol, filterMethod, filterResourceType, filterIP, filterPortMin, filterPortMax].forEach(elem => {
+    if (elem) {
+      elem.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          applyFilters();
+        }
+      });
+    }
+  });
+
+  console.log('[Viewer] Initialization complete');
+}
+
+// 로그 파일 불러오기
+async function loadLogFile() {
+  try {
+    console.log('[Viewer] Loading log file...');
+    const result = await window.electronAPI.selectFile();
+
+    if (!result.success) {
+      throw new Error(result.error || '파일을 선택하지 않았습니다');
+    }
+
+    const filePath = result.filePath;
+    const content = result.content;
+
+    console.log('[Viewer] File loaded:', filePath);
+    console.log('[Viewer] Content length:', content.length);
+
+    // 로그 파싱
+    const parsedData = parseLogContent(content);
+    console.log('[Viewer] Parsed entries:', parsedData.length);
+
+    if (parsedData.length === 0) {
+      throw new Error('로그 파일에 유효한 데이터가 없습니다');
+    }
+
+    // 데이터 저장
+    loadedLogData = parsedData;
+    filteredLogData = [...parsedData];
+
+    // UI 업데이트
+    logFileStatus.textContent = `✅ ${parsedData.length}개 로그 로드됨`;
+    logFileStatus.style.color = '#4ade80';
+    clearViewerBtn.disabled = false;
+
+    // 통계 및 뷰 표시
+    viewerStats.style.display = 'grid';
+    viewerFilters.style.display = 'block';
+    viewerModePanel.style.display = 'flex';
+
+    // 초기 렌더링
+    updateStatistics();
+    renderCurrentView();
+
+    alert(`✅ ${parsedData.length}개의 로그를 성공적으로 불러왔습니다!`);
+  } catch (error) {
+    console.error('[Viewer] Error loading file:', error);
+    alert(`❌ 파일 불러오기 실패:\n${error.message}`);
+  }
+}
+
+// 로그 내용 파싱
+function parseLogContent(content) {
+  const lines = content.split('\n');
+  const parsedData = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue; // 빈 줄이나 주석 무시
+
+    // 형식: timestamp | source IP:port > dest IP:port | protocol | method | resource type | domain | URL
+    const parts = trimmed.split('|').map(p => p.trim());
+
+    if (parts.length < 7) continue; // 유효하지 않은 라인
+
+    try {
+      const [timestamp, endpoints, protocol, method, resourceType, domain, url] = parts;
+
+      // endpoints 파싱: "source IP:port > dest IP:port"
+      const endpointMatch = endpoints.match(/(.+):(\d+)\s*>\s*(.+):(\d+)/);
+      if (!endpointMatch) continue;
+
+      const [, sourceIP, sourcePort, destIP, destPort] = endpointMatch;
+
+      parsedData.push({
+        timestamp,
+        sourceIP,
+        sourcePort: parseInt(sourcePort),
+        destIP,
+        destPort: parseInt(destPort),
+        protocol,
+        method,
+        resourceType,
+        domain,
+        url
+      });
+    } catch (error) {
+      console.warn('[Viewer] Failed to parse line:', trimmed, error);
+    }
+  }
+
+  return parsedData;
+}
+
+// 통계 업데이트
+function updateStatistics() {
+  const data = filteredLogData;
+
+  // 총 연결 수
+  statTotalConnections.textContent = data.length.toLocaleString();
+
+  // 고유 도메인 수
+  const uniqueDomains = new Set(data.map(d => d.domain));
+  statUniqueDomains.textContent = uniqueDomains.size.toLocaleString();
+
+  // 고유 IP 수
+  const uniqueIPs = new Set([...data.map(d => d.sourceIP), ...data.map(d => d.destIP)]);
+  statUniqueIPs.textContent = uniqueIPs.size.toLocaleString();
+
+  // 프로토콜 분포
+  const protocolCounts = {};
+  data.forEach(d => {
+    protocolCounts[d.protocol] = (protocolCounts[d.protocol] || 0) + 1;
+  });
+  const protocolText = Object.entries(protocolCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([proto, count]) => `${proto}: ${count}`)
+    .join(', ');
+  statProtocols.textContent = protocolText || '-';
+}
+
+// 필터 적용
+function applyFilters() {
+  console.log('[Viewer] Applying filters...');
+
+  filteredLogData = loadedLogData.filter(entry => {
+    // 도메인 필터
+    if (filterDomain.value && !entry.domain.toLowerCase().includes(filterDomain.value.toLowerCase())) {
+      return false;
+    }
+
+    // 프로토콜 필터
+    if (filterProtocol.value && entry.protocol !== filterProtocol.value) {
+      return false;
+    }
+
+    // 메소드 필터
+    if (filterMethod.value && entry.method !== filterMethod.value) {
+      return false;
+    }
+
+    // 리소스 타입 필터
+    if (filterResourceType.value && entry.resourceType !== filterResourceType.value) {
+      return false;
+    }
+
+    // IP 필터 (source 또는 dest)
+    if (filterIP.value) {
+      const ipSearch = filterIP.value.toLowerCase();
+      if (!entry.sourceIP.includes(ipSearch) && !entry.destIP.includes(ipSearch)) {
+        return false;
+      }
+    }
+
+    // 포트 범위 필터
+    const minPort = filterPortMin.value ? parseInt(filterPortMin.value) : 0;
+    const maxPort = filterPortMax.value ? parseInt(filterPortMax.value) : 65535;
+    if (entry.sourcePort < minPort || entry.sourcePort > maxPort) {
+      if (entry.destPort < minPort || entry.destPort > maxPort) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  console.log('[Viewer] Filtered results:', filteredLogData.length);
+
+  updateStatistics();
+  renderCurrentView();
+}
+
+// 필터 초기화
+function resetFilters() {
+  console.log('[Viewer] Resetting filters...');
+
+  filterDomain.value = '';
+  filterProtocol.value = '';
+  filterMethod.value = '';
+  filterResourceType.value = '';
+  filterIP.value = '';
+  filterPortMin.value = '';
+  filterPortMax.value = '';
+
+  filteredLogData = [...loadedLogData];
+
+  updateStatistics();
+  renderCurrentView();
+}
+
+// 뷰 모드 전환
+function switchViewMode(mode) {
+  console.log('[Viewer] Switching to', mode, 'view');
+  currentViewMode = mode;
+
+  // 버튼 활성화 상태 업데이트
+  viewModeDetail.classList.toggle('active', mode === 'detail');
+  viewModeAggregate.classList.toggle('active', mode === 'aggregate');
+
+  // 뷰 표시/숨김
+  viewerDetailView.style.display = mode === 'detail' ? 'block' : 'none';
+  viewerAggregateView.style.display = mode === 'aggregate' ? 'block' : 'none';
+
+  renderCurrentView();
+}
+
+// 현재 뷰 렌더링
+function renderCurrentView() {
+  if (currentViewMode === 'detail') {
+    renderDetailView();
+  } else {
+    renderAggregateView();
+  }
+}
+
+// 상세 테이블 뷰 렌더링
+function renderDetailView() {
+  console.log('[Viewer] Rendering detail view...');
+
+  viewerDetailBody.innerHTML = '';
+
+  if (filteredLogData.length === 0) {
+    viewerDetailBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #6c757d;">필터 조건에 맞는 데이터가 없습니다</td></tr>';
+    viewerResultCount.textContent = '0개 결과';
+    return;
+  }
+
+  // 최대 1000개까지만 표시 (성능 고려)
+  const displayData = filteredLogData.slice(0, 1000);
+
+  displayData.forEach(entry => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(entry.timestamp)}</td>
+      <td>${escapeHtml(entry.sourceIP)}:${entry.sourcePort}</td>
+      <td>${escapeHtml(entry.destIP)}:${entry.destPort}</td>
+      <td><span style="background: #667eea; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${escapeHtml(entry.protocol)}</span></td>
+      <td><span style="background: #48bb78; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${escapeHtml(entry.method)}</span></td>
+      <td>${escapeHtml(entry.resourceType)}</td>
+      <td><strong>${escapeHtml(entry.domain)}</strong></td>
+      <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(entry.url)}">${escapeHtml(entry.url)}</td>
+    `;
+    viewerDetailBody.appendChild(row);
+  });
+
+  const resultText = filteredLogData.length > 1000
+    ? `${filteredLogData.length.toLocaleString()}개 결과 (상위 1,000개 표시)`
+    : `${filteredLogData.length.toLocaleString()}개 결과`;
+  viewerResultCount.textContent = resultText;
+}
+
+// 도메인 집계 뷰 렌더링
+function renderAggregateView() {
+  console.log('[Viewer] Rendering aggregate view...');
+
+  viewerAggregateBody.innerHTML = '';
+
+  if (filteredLogData.length === 0) {
+    viewerAggregateBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #6c757d;">필터 조건에 맞는 데이터가 없습니다</td></tr>';
+    viewerResultCount.textContent = '0개 도메인';
+    return;
+  }
+
+  // 도메인별로 그룹화
+  const domainGroups = {};
+
+  filteredLogData.forEach(entry => {
+    if (!domainGroups[entry.domain]) {
+      domainGroups[entry.domain] = {
+        domain: entry.domain,
+        connections: [],
+        ips: new Set(),
+        protocols: new Set(),
+        methods: new Set(),
+        resourceTypes: new Set(),
+        firstConnection: entry.timestamp,
+        lastConnection: entry.timestamp
+      };
+    }
+
+    const group = domainGroups[entry.domain];
+    group.connections.push(entry);
+    group.ips.add(entry.destIP);
+    group.protocols.add(entry.protocol);
+    group.methods.add(entry.method);
+    group.resourceTypes.add(entry.resourceType);
+
+    // 타임스탬프 비교 (문자열 비교로도 충분)
+    if (entry.timestamp < group.firstConnection) {
+      group.firstConnection = entry.timestamp;
+    }
+    if (entry.timestamp > group.lastConnection) {
+      group.lastConnection = entry.timestamp;
+    }
+  });
+
+  // 배열로 변환 및 정렬 (연결 수 내림차순)
+  const sortedDomains = Object.values(domainGroups).sort((a, b) => b.connections.length - a.connections.length);
+
+  sortedDomains.forEach(group => {
+    const row = document.createElement('tr');
+
+    // 주요 메소드 (가장 많이 사용된 것)
+    const methodCounts = {};
+    group.methods.forEach(m => {
+      methodCounts[m] = group.connections.filter(c => c.method === m).length;
+    });
+    const topMethods = Object.entries(methodCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([method]) => method)
+      .join(', ');
+
+    row.innerHTML = `
+      <td><strong>${escapeHtml(group.domain)}</strong></td>
+      <td style="text-align: center;"><span style="background: #667eea; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 600;">${group.connections.length}</span></td>
+      <td style="text-align: center;">${group.ips.size}</td>
+      <td>${Array.from(group.protocols).map(p => `<span style="background: #764ba2; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-right: 4px;">${escapeHtml(p)}</span>`).join('')}</td>
+      <td>${escapeHtml(topMethods)}</td>
+      <td>${Array.from(group.resourceTypes).slice(0, 3).join(', ')}</td>
+      <td style="font-size: 12px;">${escapeHtml(group.firstConnection)}</td>
+      <td style="font-size: 12px;">${escapeHtml(group.lastConnection)}</td>
+    `;
+    viewerAggregateBody.appendChild(row);
+  });
+
+  viewerResultCount.textContent = `${sortedDomains.length.toLocaleString()}개 도메인`;
+}
+
+// 뷰어 초기화
+function clearViewer() {
+  console.log('[Viewer] Clearing viewer...');
+
+  loadedLogData = [];
+  filteredLogData = [];
+  currentViewMode = 'detail';
+
+  logFileStatus.textContent = '파일이 로드되지 않음';
+  logFileStatus.style.color = 'white';
+  clearViewerBtn.disabled = true;
+
+  viewerStats.style.display = 'none';
+  viewerFilters.style.display = 'none';
+  viewerModePanel.style.display = 'none';
+  viewerDetailView.style.display = 'none';
+  viewerAggregateView.style.display = 'none';
+
+  // 필터 초기화
+  filterDomain.value = '';
+  filterProtocol.value = '';
+  filterMethod.value = '';
+  filterResourceType.value = '';
+  filterIP.value = '';
+  filterPortMin.value = '';
+  filterPortMax.value = '';
+
+  // 뷰 모드 버튼 초기화
+  viewModeDetail.classList.add('active');
+  viewModeAggregate.classList.remove('active');
+
+  console.log('[Viewer] Viewer cleared');
+}
+
+// HTML 이스케이프 (XSS 방지)
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

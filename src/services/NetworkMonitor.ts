@@ -11,11 +11,12 @@
  */
 
 import { Page, Request, WebSocket } from 'playwright';
-import { DomainInfo, ResourceType } from '../types';
+import { DomainInfo, ResourceType, FiveTupleConnection } from '../types';
 import { IDNSResolver } from '../interfaces/IDNSResolver';
 import { Injectable, Inject } from '../decorators';
 import { IDetector } from '../interfaces/IDetector';
 import * as domainUtils from '../utils/domainUtils';
+import * as os from 'os';
 
 /**
  * 수집 중인 도메인 상세 정보
@@ -47,6 +48,8 @@ export class NetworkMonitor {
   private visitedDomains: Set<string> = new Set();
   private domainDetails: Map<string, CollectedDomainData> = new Map();
   private visitedIPs: Set<string> = new Set();
+  private fiveTupleLogs: FiveTupleConnection[] = [];
+  private sourceIp: string = '0.0.0.0';
   private monitoredPages: Map<Page, {
     requestListener: (request: Request) => void;
     webSocketListener: (ws: WebSocket) => void;
@@ -62,7 +65,33 @@ export class NetworkMonitor {
     @Inject('IDetector') private detector: IDetector,
     @Inject('IDNSResolver') private dnsResolver: IDNSResolver
   ) {
-    console.log('[NetworkMonitor] Initialized');
+    this.sourceIp = this.getLocalIpAddress();
+    console.log('[NetworkMonitor] Initialized with source IP:', this.sourceIp);
+  }
+
+  /**
+   * 로컬 IP 주소를 가져옵니다.
+   *
+   * @returns 로컬 IP 주소
+   */
+  private getLocalIpAddress(): string {
+    const networkInterfaces = os.networkInterfaces();
+
+    // 모든 네트워크 인터페이스를 순회
+    for (const interfaceName in networkInterfaces) {
+      const interfaces = networkInterfaces[interfaceName];
+      if (!interfaces) continue;
+
+      for (const iface of interfaces) {
+        // IPv4, 내부 네트워크가 아닌 경우
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+
+    // 적절한 IP를 찾지 못한 경우 localhost 반환
+    return '127.0.0.1';
   }
 
   /**
@@ -215,9 +244,6 @@ export class NetworkMonitor {
           ipv4: new Set<string>(),
           ipv6: new Set<string>()
         });
-
-        // DNS 조회하여 IP 수집 (백그라운드에서 실행)
-        this.resolveDNSAsync(domain);
       }
 
       const details = this.domainDetails.get(domain)!;
@@ -228,6 +254,12 @@ export class NetworkMonitor {
       details.urls.add(urlObj.pathname + urlObj.search);
 
       console.log(`[${resourceType}] ${domain} (${details.count} requests)`);
+
+      // HTTP 메소드 정보 (Request 객체에서 가져오기)
+      const method = request.method();
+
+      // DNS 조회하여 IP 수집 및 5-tuple 로그 생성
+      this.resolveDNSAsync(domain, url, method, resourceType);
     } catch (error) {
       // URL 파싱 에러 무시 (invalid URL 등)
     }
@@ -237,8 +269,16 @@ export class NetworkMonitor {
    * DNS 해석을 비동기로 수행합니다.
    *
    * @param domain - 해석할 도메인
+   * @param url - 요청 URL (5-tuple 로깅용)
+   * @param method - HTTP 메소드 (5-tuple 로깅용)
+   * @param resourceType - 리소스 타입 (5-tuple 로깅용)
    */
-  private async resolveDNSAsync(domain: string): Promise<void> {
+  private async resolveDNSAsync(
+    domain: string,
+    url?: string,
+    method?: string,
+    resourceType?: ResourceType
+  ): Promise<void> {
     try {
       const ips = await this.dnsResolver.resolve(domain);
       const domainInfo = this.domainDetails.get(domain);
@@ -253,9 +293,89 @@ export class NetworkMonitor {
           domainInfo.ipv6.add(ip);
           this.visitedIPs.add(ip);
         });
+
+        // 5-tuple 로그 생성 (URL과 메소드가 제공된 경우)
+        if (url && method && resourceType) {
+          this.create5TupleLog(domain, url, method, resourceType, ips.ipv4, ips.ipv6);
+        }
       }
     } catch (err) {
       // DNS 조회 실패는 무시
+    }
+  }
+
+  /**
+   * 5-tuple 연결 로그를 생성합니다.
+   *
+   * @param domain - 도메인
+   * @param url - 요청 URL
+   * @param method - HTTP 메소드
+   * @param resourceType - 리소스 타입
+   * @param ipv4List - IPv4 주소 목록
+   * @param ipv6List - IPv6 주소 목록
+   */
+  private create5TupleLog(
+    domain: string,
+    url: string,
+    method: string,
+    resourceType: ResourceType,
+    ipv4List: string[],
+    ipv6List: string[]
+  ): void {
+    try {
+      const urlObj = new URL(url);
+      const protocol = urlObj.protocol.replace(':', '').toUpperCase();
+
+      // 포트 결정 (명시적 포트가 없으면 프로토콜 기본 포트 사용)
+      let destinationPort = 80;
+      if (urlObj.port) {
+        destinationPort = parseInt(urlObj.port, 10);
+      } else if (protocol === 'HTTPS' || protocol === 'WSS') {
+        destinationPort = 443;
+      } else if (protocol === 'WS') {
+        destinationPort = 80;
+      }
+
+      // 소스 포트 생성 (브라우저에서 실제 포트를 알 수 없으므로 임시 포트 범위 사용)
+      const sourcePort = Math.floor(Math.random() * (65535 - 49152 + 1)) + 49152;
+
+      // IPv4 주소에 대한 5-tuple 로그 생성
+      ipv4List.forEach(destinationIp => {
+        const fiveTuple: FiveTupleConnection = {
+          timestamp: new Date().toISOString(),
+          sourceIp: this.sourceIp,
+          sourcePort: sourcePort,
+          destinationIp: destinationIp,
+          destinationPort: destinationPort,
+          protocol: protocol,
+          url: url,
+          domain: domain,
+          method: method,
+          resourceType: resourceType
+        };
+
+        this.fiveTupleLogs.push(fiveTuple);
+      });
+
+      // IPv6 주소에 대한 5-tuple 로그 생성
+      ipv6List.forEach(destinationIp => {
+        const fiveTuple: FiveTupleConnection = {
+          timestamp: new Date().toISOString(),
+          sourceIp: this.sourceIp,
+          sourcePort: sourcePort,
+          destinationIp: destinationIp,
+          destinationPort: destinationPort,
+          protocol: protocol,
+          url: url,
+          domain: domain,
+          method: method,
+          resourceType: resourceType
+        };
+
+        this.fiveTupleLogs.push(fiveTuple);
+      });
+    } catch (error) {
+      // 5-tuple 로그 생성 실패는 무시
     }
   }
 
@@ -401,6 +521,16 @@ export class NetworkMonitor {
     this.visitedDomains.clear();
     this.domainDetails.clear();
     this.visitedIPs.clear();
+    this.fiveTupleLogs = [];
     console.log('[NetworkMonitor] Data cleared');
+  }
+
+  /**
+   * 수집된 5-tuple 연결 로그를 가져옵니다.
+   *
+   * @returns 5-tuple 연결 로그 목록
+   */
+  getFiveTupleLogs(): FiveTupleConnection[] {
+    return this.fiveTupleLogs;
   }
 }

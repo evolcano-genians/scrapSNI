@@ -8,7 +8,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { AnalysisOptions, WorkflowStep, SNIWhitelistResult, SNIExportOptions } from './types';
+import { AnalysisOptions, WorkflowStep, SNIWhitelistResult, SNIExportOptions, BlockTestOptions, BlockTestResult } from './types';
 
 /**
  * ElectronAPI 인터페이스
@@ -18,7 +18,7 @@ import { AnalysisOptions, WorkflowStep, SNIWhitelistResult, SNIExportOptions } f
  */
 interface ElectronAPI {
   // 트래킹 관련
-  startTracking: (browserType?: string) => Promise<{ success: boolean; error?: string }>;
+  startTracking: (browserType?: string, blockedDomains?: string[]) => Promise<{ success: boolean; error?: string }>;
   stopTracking: () => Promise<{ success: boolean; domains?: any[]; error?: string }>;
   getTrackingStatus: () => Promise<boolean>;
   getCurrentDomains: () => Promise<any[]>;
@@ -48,6 +48,19 @@ interface ElectronAPI {
 
   // 파일 저장
   saveFile: (defaultPath: string, content: string) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
+
+  // 도메인 차단 테스트
+  runBlockTest: (options: BlockTestOptions) => Promise<BlockTestResult>;
+  stopBlockTest: () => Promise<{ success: boolean; error?: string }>;
+
+  // 차단 도메인 파일 가져오기
+  importBlockDomains: () => Promise<{ success: boolean; content?: string; canceled?: boolean; error?: string }>;
+
+  // 5-tuple 로그 내보내기
+  export5TupleLogs: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
+
+  // 파일 선택 (5-tuple 뷰어용)
+  selectFile: () => Promise<{ success: boolean; filePath?: string; content?: string; canceled?: boolean; error?: string }>;
 }
 
 /**
@@ -66,18 +79,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * 수동 트래킹을 시작합니다.
    *
    * @param {string} browserType - 브라우저 타입 (chromium, firefox, webkit) - 선택사항
+   * @param {string[]} blockedDomains - 차단할 도메인 목록 - 선택사항
    * @returns {Promise} 성공 여부와 에러 메시지
    *
    * @example
-   * const result = await window.electronAPI.startTracking('firefox');
+   * const result = await window.electronAPI.startTracking('firefox', ['ads.example.com', '*.analytics.com']);
    * if (result.success) {
    *   console.log('트래킹 시작됨');
    * } else {
    *   console.error(result.error);
    * }
    */
-  startTracking: (browserType?: string) => {
-    return ipcRenderer.invoke('start-tracking', browserType);
+  startTracking: (browserType?: string, blockedDomains?: string[]) => {
+    return ipcRenderer.invoke('start-tracking', browserType, blockedDomains);
   },
 
   /**
@@ -370,6 +384,93 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   saveFile: (defaultPath: string, content: string) => {
     return ipcRenderer.invoke('save-file', defaultPath, content);
+  },
+
+  // ==================== 도메인 차단 테스트 ====================
+
+  /**
+   * 도메인 차단 테스트를 실행합니다.
+   *
+   * @param {BlockTestOptions} options - 테스트 옵션
+   * @returns {Promise<BlockTestResult>} 테스트 결과
+   *
+   * @example
+   * const result = await window.electronAPI.runBlockTest({
+   *   url: 'https://example.com',
+   *   mode: 'blacklist',
+   *   domains: ['ads.example.com', 'tracker.example.com'],
+   *   captureScreenshot: true,
+   *   waitTime: 5000
+   * });
+   */
+  runBlockTest: (options: BlockTestOptions) => {
+    return ipcRenderer.invoke('run-block-test', options);
+  },
+
+  /**
+   * 도메인 차단 테스트를 중지합니다.
+   *
+   * @returns {Promise} 성공 여부
+   *
+   * @example
+   * const result = await window.electronAPI.stopBlockTest();
+   */
+  stopBlockTest: () => {
+    return ipcRenderer.invoke('stop-block-test');
+  },
+
+  // ==================== 차단 도메인 파일 가져오기 ====================
+
+  /**
+   * 파일에서 차단 도메인 목록을 가져옵니다.
+   *
+   * @returns {Promise} 파일 내용, 취소 여부, 에러
+   *
+   * @example
+   * const result = await window.electronAPI.importBlockDomains();
+   * if (result.success) {
+   *   console.log('파일 내용:', result.content);
+   * } else if (result.canceled) {
+   *   console.log('사용자가 취소함');
+   * }
+   */
+  importBlockDomains: () => {
+    return ipcRenderer.invoke('import-block-domains');
+  },
+
+  /**
+   * 5-tuple 연결 로그를 파일로 내보냅니다.
+   *
+   * @returns {Promise} 파일 경로, 취소 여부, 에러
+   *
+   * @example
+   * const result = await window.electronAPI.export5TupleLogs();
+   * if (result.success) {
+   *   console.log('로그 저장 완료:', result.filePath);
+   * } else if (result.canceled) {
+   *   console.log('사용자가 취소함');
+   * }
+   */
+  export5TupleLogs: () => {
+    return ipcRenderer.invoke('export-5tuple-logs');
+  },
+
+  /**
+   * 파일을 선택하고 내용을 읽습니다. (5-Tuple 뷰어용)
+   *
+   * @returns {Promise} 파일 경로, 내용, 취소 여부, 에러
+   *
+   * @example
+   * const result = await window.electronAPI.selectFile();
+   * if (result.success) {
+   *   console.log('파일 경로:', result.filePath);
+   *   console.log('파일 내용:', result.content);
+   * } else if (result.canceled) {
+   *   console.log('사용자가 취소함');
+   * }
+   */
+  selectFile: () => {
+    return ipcRenderer.invoke('select-file');
   }
 } as ElectronAPI);
 

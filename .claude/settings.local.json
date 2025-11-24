@@ -50,7 +50,8 @@
       "Bash(git commit:*)",
       "Bash(rm:*)",
       "Bash(\"/Users/shinhheejoon/WebstormProjects/scrapSNI/dist/mac-arm64/Domain Tracker.app/Contents/MacOS/Domain Tracker\")",
-      "Bash(log show:*)"
+      "Bash(log show:*)",
+      "Bash(killall:*)"
     ],
     "deny": [],
     "ask": []

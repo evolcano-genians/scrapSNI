@@ -21,7 +21,8 @@ import { AppModule } from './modules/app.module';
 import { TrackingService } from './services/TrackingService';
 import { WorkflowService } from './services/WorkflowService';
 import { SNIWhitelistService } from './services/SNIWhitelistService';
-import { AnalysisOptions, WorkflowStep, SNIExportOptions } from './types';
+import { DomainBlockTester } from './services/DomainBlockTester';
+import { AnalysisOptions, WorkflowStep, SNIExportOptions, BlockTestOptions } from './types';
 import { updateConfigCategory } from './config/config';
 
 /**
@@ -40,6 +41,7 @@ class DomainTracker {
   private trackingService: TrackingService;
   private workflowService: WorkflowService;
   private sniWhitelistService: SNIWhitelistService;
+  private domainBlockTester: DomainBlockTester;
 
   constructor() {
     console.log('[DomainTracker] Initializing with NestJS-style architecture...');
@@ -54,6 +56,7 @@ class DomainTracker {
     this.trackingService = this.container.resolve<TrackingService>('TrackingService');
     this.workflowService = this.container.resolve<WorkflowService>('WorkflowService');
     this.sniWhitelistService = this.container.resolve<SNIWhitelistService>('SNIWhitelistService');
+    this.domainBlockTester = this.container.resolve<DomainBlockTester>('DomainBlockTester');
 
     this.setupIpcHandlers();
 
@@ -63,15 +66,20 @@ class DomainTracker {
   /**
    * 메인 윈도우를 생성합니다.
    *
-   * - 크기: 1000x700
+   * - 크기: 1400x900 (기본)
+   * - 최소 크기: 1200x800
+   * - 반응형 디자인 지원
    * - preload 스크립트 사용 (보안)
    * - contextIsolation 활성화
    * - nodeIntegration 비활성화
    */
   createMainWindow(): void {
     this.mainWindow = new BrowserWindow({
-      width: 1000,
-      height: 700,
+      width: 1400,
+      height: 900,
+      minWidth: 1200,
+      minHeight: 800,
+      resizable: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),  // 컴파일된 JS 파일 사용
         contextIsolation: true,   // 보안: 렌더러 프로세스 격리
@@ -105,7 +113,7 @@ class DomainTracker {
     /**
      * 수동 트래킹 시작
      */
-    ipcMain.handle('start-tracking', async (_event, browserType?: string) => {
+    ipcMain.handle('start-tracking', async (_event, browserType?: string, blockedDomains?: string[]) => {
       try {
         // 브라우저 타입이 지정된 경우 설정 업데이트
         if (browserType && (browserType === 'chromium' || browserType === 'firefox' || browserType === 'webkit')) {
@@ -113,7 +121,12 @@ class DomainTracker {
           updateConfigCategory('browser', { browserType: browserType as any });
         }
 
-        await this.trackingService.startTracking();
+        // 차단할 도메인 목록 로그
+        if (blockedDomains && blockedDomains.length > 0) {
+          console.log(`[IPC] Blocked domains:`, blockedDomains);
+        }
+
+        await this.trackingService.startTracking(blockedDomains);
         return { success: true };
       } catch (error) {
         console.error('[IPC Error] start-tracking:', error);
@@ -494,6 +507,179 @@ class DomainTracker {
         };
       } catch (error) {
         console.error('[IPC Error] save-file:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 도메인 차단 테스트 실행
+     */
+    ipcMain.handle('run-block-test', async (_event, options: BlockTestOptions) => {
+      try {
+        console.log('[IPC] run-block-test called');
+        const result = await this.domainBlockTester.runTest(options);
+        return result;
+      } catch (error) {
+        console.error('[IPC Error] run-block-test:', error);
+        return {
+          success: false,
+          url: options.url,
+          mode: options.mode,
+          timestamp: new Date().toISOString(),
+          totalRequests: 0,
+          blockedRequests: 0,
+          allowedRequests: 0,
+          pageErrors: 0,
+          blocked: [],
+          allowed: [],
+          errors: [],
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 도메인 차단 테스트 중지
+     */
+    ipcMain.handle('stop-block-test', async () => {
+      try {
+        console.log('[IPC] stop-block-test called');
+        await this.domainBlockTester.stopTest();
+        return { success: true };
+      } catch (error) {
+        console.error('[IPC Error] stop-block-test:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 차단 도메인 파일 가져오기
+     */
+    ipcMain.handle('import-block-domains', async () => {
+      try {
+        console.log('[IPC] import-block-domains called');
+
+        // 파일 선택 다이얼로그 열기
+        const result = await dialog.showOpenDialog(this.mainWindow!, {
+          title: '차단 도메인 목록 파일 선택',
+          filters: [
+            { name: '텍스트 파일', extensions: ['txt'] },
+            { name: '모든 파일', extensions: ['*'] }
+          ],
+          properties: ['openFile']
+        });
+
+        // 사용자가 취소한 경우
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, canceled: true };
+        }
+
+        const filePath = result.filePaths[0];
+        console.log('[IPC] Reading file:', filePath);
+
+        // 파일 읽기
+        const content = fs.readFileSync(filePath, 'utf-8');
+
+        return {
+          success: true,
+          content: content.trim()
+        };
+      } catch (error) {
+        console.error('[IPC Error] import-block-domains:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 5-tuple 연결 로그 내보내기
+     */
+    ipcMain.handle('export-5tuple-logs', async () => {
+      try {
+        console.log('[IPC] export-5tuple-logs called');
+
+        // 5-tuple 로그 가져오기
+        const logContent = this.trackingService.export5TupleLogs();
+
+        // 파일 저장 다이얼로그 열기
+        const result = await dialog.showSaveDialog(this.mainWindow!, {
+          title: '5-Tuple 연결 로그 저장',
+          defaultPath: `5tuple_log_${new Date().toISOString().replace(/:/g, '-').slice(0, 19)}.txt`,
+          filters: [
+            { name: '텍스트 파일', extensions: ['txt'] },
+            { name: '로그 파일', extensions: ['log'] },
+            { name: '모든 파일', extensions: ['*'] }
+          ]
+        });
+
+        // 사용자가 취소한 경우
+        if (result.canceled || !result.filePath) {
+          return { success: false, canceled: true };
+        }
+
+        const filePath = result.filePath;
+        console.log('[IPC] Saving 5-tuple logs to:', filePath);
+
+        // 파일 저장
+        fs.writeFileSync(filePath, logContent, 'utf-8');
+
+        return {
+          success: true,
+          filePath: filePath
+        };
+      } catch (error) {
+        console.error('[IPC Error] export-5tuple-logs:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * 파일 선택 및 읽기 (5-Tuple 뷰어용)
+     */
+    ipcMain.handle('select-file', async () => {
+      try {
+        console.log('[IPC] select-file called');
+
+        // 파일 선택 다이얼로그 열기
+        const result = await dialog.showOpenDialog(this.mainWindow!, {
+          title: '5-Tuple 로그 파일 선택',
+          filters: [
+            { name: '텍스트 파일', extensions: ['txt'] },
+            { name: '로그 파일', extensions: ['log'] },
+            { name: '모든 파일', extensions: ['*'] }
+          ],
+          properties: ['openFile']
+        });
+
+        // 사용자가 취소한 경우
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, canceled: true };
+        }
+
+        const filePath = result.filePaths[0];
+        console.log('[IPC] Reading file:', filePath);
+
+        // 파일 읽기
+        const content = fs.readFileSync(filePath, 'utf-8');
+
+        return {
+          success: true,
+          filePath,
+          content: content.trim()
+        };
+      } catch (error) {
+        console.error('[IPC Error] select-file:', error);
         return {
           success: false,
           error: (error as Error).message
