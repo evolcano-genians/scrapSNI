@@ -92,14 +92,22 @@ export class TrackingService {
       await this.browserManager.startBrowser(false);
 
       const page = this.browserManager.getPage();
+      const context = this.browserManager.getContext();
 
-      // 네트워크 모니터링 시작
+      // 네트워크 모니터링 시작 (초기 페이지)
       this.networkMonitor.startMonitoring(page);
+
+      // 새로 생성되는 모든 페이지/탭에 대해 자동으로 모니터링 시작
+      context.on('page', (newPage) => {
+        console.log('[TrackingService] New tab/page detected, starting monitoring...');
+        this.networkMonitor.startMonitoring(newPage);
+      });
 
       // 빈 페이지로 시작 (사용자가 URL 직접 입력)
       await page.goto('about:blank');
 
       console.log('[TrackingService] Manual tracking started successfully');
+      console.log('[TrackingService] All new tabs will be automatically monitored');
     } catch (error) {
       await this.browserManager.stopBrowser();
       throw error;
@@ -119,10 +127,8 @@ export class TrackingService {
     }
 
     try {
-      const page = this.browserManager.getPage();
-
-      // 네트워크 모니터링 중지 및 결과 수집
-      const result = this.networkMonitor.stopMonitoring(page);
+      // 네트워크 모니터링 중지 및 결과 수집 (모든 페이지/탭)
+      const result = this.networkMonitor.stopMonitoring();
 
       // 브라우저 종료
       await this.browserManager.stopBrowser();
@@ -189,9 +195,16 @@ export class TrackingService {
       await this.browserManager.startBrowser(!requiresLogin, contextOptions);
 
       const page = this.browserManager.getPage();
+      const context = this.browserManager.getContext();
 
-      // 네트워크 모니터링 시작
+      // 네트워크 모니터링 시작 (초기 페이지)
       this.networkMonitor.startMonitoring(page);
+
+      // 새로 생성되는 모든 페이지/탭에 대해 자동으로 모니터링 시작
+      context.on('page', (newPage) => {
+        console.log('[TrackingService] New tab/page detected during analysis, starting monitoring...');
+        this.networkMonitor.startMonitoring(newPage);
+      });
 
       // 페이지 로드
       console.log('→ Loading page...');
@@ -236,8 +249,8 @@ export class TrackingService {
         await this.webCrawler.crawl(page, targetUrl, crawlDepth, sameDomainOnly, onProgress);
       }
 
-      // 결과 수집
-      const result = this.networkMonitor.stopMonitoring(page);
+      // 결과 수집 (모든 모니터링 중인 페이지)
+      const result = this.networkMonitor.stopMonitoring();
 
       // DNS 해석
       console.log('→ Starting DNS resolution for all domains...');

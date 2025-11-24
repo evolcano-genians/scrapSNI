@@ -47,8 +47,10 @@ export class NetworkMonitor {
   private visitedDomains: Set<string> = new Set();
   private domainDetails: Map<string, CollectedDomainData> = new Map();
   private visitedIPs: Set<string> = new Set();
-  private requestListener: ((request: Request) => void) | null = null;
-  private webSocketListener: ((ws: WebSocket) => void) | null = null;
+  private monitoredPages: Map<Page, {
+    requestListener: (request: Request) => void;
+    webSocketListener: (ws: WebSocket) => void;
+  }> = new Map();
 
   /**
    * 생성자
@@ -69,61 +71,91 @@ export class NetworkMonitor {
    * @param page - Playwright Page 인스턴스
    */
   startMonitoring(page: Page): void {
-    if (this.isMonitoring) {
-      console.warn('[NetworkMonitor] Already monitoring');
+    if (!this.isMonitoring) {
+      console.log('[NetworkMonitor] Starting network monitoring...');
+
+      // 상태 초기화 (최초 시작 시에만)
+      this.visitedDomains.clear();
+      this.domainDetails.clear();
+      this.visitedIPs.clear();
+      this.monitoredPages.clear();
+
+      this.isMonitoring = true;
+    }
+
+    // 이미 모니터링 중인 페이지면 스킵
+    if (this.monitoredPages.has(page)) {
+      console.log('[NetworkMonitor] Page already being monitored');
       return;
     }
 
-    console.log('[NetworkMonitor] Starting network monitoring...');
-
-    // 상태 초기화
-    this.visitedDomains.clear();
-    this.domainDetails.clear();
-    this.visitedIPs.clear();
-
     // 요청 리스너 설정
-    this.requestListener = (request: Request) => {
+    const requestListener = (request: Request) => {
       this.handleRequest(request).catch(error => {
         // 에러는 조용히 무시 (네트워크 모니터링 실패가 앱을 중단시키면 안됨)
       });
     };
 
     // WebSocket 리스너 설정
-    this.webSocketListener = (ws: WebSocket) => {
+    const webSocketListener = (ws: WebSocket) => {
       this.handleWebSocket(ws).catch(error => {
         // 에러는 조용히 무시
       });
     };
 
-    page.on('request', this.requestListener);
-    page.on('websocket', this.webSocketListener);
-    this.isMonitoring = true;
+    page.on('request', requestListener);
+    page.on('websocket', webSocketListener);
 
-    console.log('[NetworkMonitor] Network monitoring started (HTTP/HTTPS + WebSocket)');
+    // 페이지가 닫힐 때 자동으로 리스너 제거
+    page.once('close', () => {
+      this.stopMonitoringPage(page);
+    });
+
+    // 모니터링 중인 페이지 목록에 추가
+    this.monitoredPages.set(page, { requestListener, webSocketListener });
+
+    console.log(`[NetworkMonitor] Started monitoring page (total: ${this.monitoredPages.size} pages)`);
+  }
+
+  /**
+   * 특정 페이지의 모니터링을 중지합니다.
+   *
+   * @param page - 모니터링을 중지할 페이지
+   */
+  private stopMonitoringPage(page: Page): void {
+    const listeners = this.monitoredPages.get(page);
+    if (listeners) {
+      try {
+        page.removeListener('request', listeners.requestListener);
+        page.removeListener('websocket', listeners.webSocketListener);
+      } catch (error) {
+        // 페이지가 이미 닫혔을 수 있으므로 에러 무시
+      }
+      this.monitoredPages.delete(page);
+      console.log(`[NetworkMonitor] Stopped monitoring page (remaining: ${this.monitoredPages.size} pages)`);
+    }
   }
 
   /**
    * 네트워크 모니터링을 중지하고 결과를 반환합니다.
    *
-   * @param page - Playwright Page 인스턴스 (리스너 제거용)
    * @returns 수집된 도메인 및 IP 목록
    */
-  stopMonitoring(page?: Page): { domains: DomainInfo[], ips: string[] } {
+  stopMonitoring(): { domains: DomainInfo[], ips: string[] } {
     console.log('[NetworkMonitor] Stopping network monitoring...');
 
-    // 리스너 제거
-    if (page) {
-      if (this.requestListener) {
-        page.removeListener('request', this.requestListener);
-      }
-      if (this.webSocketListener) {
-        page.removeListener('websocket', this.webSocketListener);
+    // 모든 페이지의 리스너 제거
+    for (const [page, listeners] of this.monitoredPages.entries()) {
+      try {
+        page.removeListener('request', listeners.requestListener);
+        page.removeListener('websocket', listeners.webSocketListener);
+      } catch (error) {
+        // 페이지가 이미 닫혔을 수 있으므로 에러 무시
       }
     }
 
+    this.monitoredPages.clear();
     this.isMonitoring = false;
-    this.requestListener = null;
-    this.webSocketListener = null;
 
     const result = this.getResults();
     console.log(`[NetworkMonitor] Collected ${result.domains.length} domains, ${result.ips.length} IPs`);
