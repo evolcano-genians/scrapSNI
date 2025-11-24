@@ -46,7 +46,9 @@
       "Bash(test:*)",
       "mcp__memory__create_entities",
       "mcp__memory__create_relations",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(git commit:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

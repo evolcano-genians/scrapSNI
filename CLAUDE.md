@@ -27,11 +27,28 @@ Domain Tracker is a comprehensive network analysis tool for generating domain/IP
 - Workflow save/load functionality
 - Progress tracking during execution
 
+### 4. SNI Whitelist Analysis (NEW)
+- Automated domain classification (essential/optional/excluded) based on resource types
+- Subdomain analysis with wildcard pattern generation (*.example.com)
+- Public/Private IP filtering (RFC 1918 compliant)
+- Multiple export formats:
+  - Plain text (line-by-line)
+  - JSON (structured data)
+  - CSV (spreadsheet format)
+  - Squid Proxy ACL
+  - pfSense Firewall Alias
+  - FortiGate URL Filter
+- Intelligent resource type analysis for SNI filtering optimization
+- Zero external dependencies
+
 ## Architecture
 
 ### Technology Stack
 - **Frontend**: Electron (HTML/CSS/JavaScript)
 - **Browser Automation**: Playwright
+- **Architecture**: NestJS-style with decorators (@Injectable, @Module, @Inject)
+- **Dependency Injection**: Custom ModuleContainer with automatic resolution
+- **Type System**: Full TypeScript with reflect-metadata
 - **IPC**: Electron IPC for main-renderer communication
 - **Storage**: JSON files for session/workflow persistence
 
@@ -39,31 +56,82 @@ Domain Tracker is a comprehensive network analysis tool for generating domain/IP
 ```
 scrapSNI/
 ├── src/
-│   ├── main.js              # Electron main process
-│   ├── preload.js           # IPC bridge
-│   ├── renderer.js          # UI logic (all tabs)
-│   ├── index.html           # Main UI
-│   └── playwrightController.js  # Browser automation
-├── build-windows.bat        # Windows build script
-├── build-unix.sh            # Unix/macOS/Linux build script
-├── BUILD.md                 # Build documentation
-└── package.json             # Dependencies and build config
+│   ├── main.ts                      # Electron main process
+│   ├── preload.ts                   # IPC bridge
+│   ├── renderer.js                  # UI logic (all tabs)
+│   ├── index.html                   # Main UI
+│   ├── types.ts                     # TypeScript type definitions
+│   ├── decorators/                  # NestJS-style decorators
+│   │   ├── injectable.decorator.ts  # @Injectable()
+│   │   ├── module.decorator.ts      # @Module()
+│   │   └── inject.decorator.ts      # @Inject()
+│   ├── di/
+│   │   └── ModuleContainer.ts       # Dependency injection container
+│   ├── modules/
+│   │   └── app.module.ts            # Root module
+│   ├── services/                    # Business logic services
+│   │   ├── TrackingService.ts       # Manual tracking
+│   │   ├── WorkflowService.ts       # Workflow execution
+│   │   ├── SNIWhitelistService.ts   # SNI whitelist analysis (NEW)
+│   │   ├── NetworkMonitor.ts        # Network request monitoring
+│   │   ├── WebCrawler.ts            # Web crawling logic
+│   │   ├── PageInteractor.ts        # Page interaction
+│   │   ├── BrowserManager.ts        # Browser lifecycle
+│   │   ├── DNSResolver.ts           # DNS resolution
+│   │   └── Detector.ts              # CDN/service detection
+│   ├── adapters/
+│   │   └── PlaywrightAdapter.ts     # Playwright wrapper
+│   ├── interfaces/                  # TypeScript interfaces
+│   │   ├── IBrowserAutomation.ts
+│   │   ├── IDNSResolver.ts
+│   │   ├── IDetector.ts
+│   │   └── ISNIWhitelistService.ts  # (NEW)
+│   └── utils/
+│       └── domainUtils.ts           # Domain parsing utilities
+├── build-windows.bat                # Windows build script
+├── build-unix.sh                    # Unix/macOS/Linux build script
+├── BUILD.md                         # Build documentation
+├── ARCHITECTURE.md                  # Architecture documentation
+├── SNI_WHITELIST.md                 # SNI feature documentation (NEW)
+├── CLAUDE.md                        # Project context (this file)
+└── package.json                     # Dependencies and build config
 ```
 
 ### Key Components
 
-#### playwrightController.js
-- `startBrowserSession()`: Start Playwright browser
-- `analyzePage()`: Auto analysis with crawling
-- `executeWorkflow()`: Workflow execution engine
-- DNS resolution with IPv4/IPv6 support
+#### SNIWhitelistService (NEW)
+- `analyzeDomains()`: Classifies domains and generates whitelist
+- `exportWhitelist()`: Exports in multiple formats (txt, json, csv, squid, pfsense, fortigate)
+- `classifyDomain()`: Resource-type based classification
+- `generateWildcardPatterns()`: Subdomain pattern analysis
+- `filterIPs()`: Public/private IP separation
+- See SNI_WHITELIST.md for detailed documentation
+
+#### TrackingService
+- `startTracking()`: Start manual browser tracking
+- `stopTracking()`: Stop tracking and collect results
+- Integrates: BrowserManager, NetworkMonitor, DNSResolver
+
+#### WorkflowService
+- `runWorkflow()`: Execute multi-step workflows
+- Supports: Navigate, Login, Crawl, Wait, Auto-Explore steps
+
+#### NetworkMonitor
+- HTTP/HTTPS request monitoring
+- WebSocket connection tracking
+- Real-time domain/IP collection
 - CDN and third-party service detection
+
+#### DNSResolver
+- Parallel IPv4/IPv6 DNS resolution
+- Caching with TTL support
+- Batch processing for performance
 
 #### renderer.js
 Event listeners organized in `initializeEventListeners()`:
 - Manual tracking tab handlers
 - Auto analysis tab handlers
-- Workflow tab handlers (lines 108-122)
+- Workflow tab handlers
 
 ## Important Implementation Details
 

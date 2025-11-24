@@ -10,7 +10,7 @@
  * - DNS 해석 및 IP 수집
  */
 
-import { Page, Request } from 'playwright';
+import { Page, Request, WebSocket } from 'playwright';
 import { DomainInfo, ResourceType } from '../types';
 import { IDNSResolver } from '../interfaces/IDNSResolver';
 import { Injectable, Inject } from '../decorators';
@@ -48,6 +48,7 @@ export class NetworkMonitor {
   private domainDetails: Map<string, CollectedDomainData> = new Map();
   private visitedIPs: Set<string> = new Set();
   private requestListener: ((request: Request) => void) | null = null;
+  private webSocketListener: ((ws: WebSocket) => void) | null = null;
 
   /**
    * 생성자
@@ -87,10 +88,18 @@ export class NetworkMonitor {
       });
     };
 
+    // WebSocket 리스너 설정
+    this.webSocketListener = (ws: WebSocket) => {
+      this.handleWebSocket(ws).catch(error => {
+        // 에러는 조용히 무시
+      });
+    };
+
     page.on('request', this.requestListener);
+    page.on('websocket', this.webSocketListener);
     this.isMonitoring = true;
 
-    console.log('[NetworkMonitor] Network monitoring started');
+    console.log('[NetworkMonitor] Network monitoring started (HTTP/HTTPS + WebSocket)');
   }
 
   /**
@@ -103,12 +112,18 @@ export class NetworkMonitor {
     console.log('[NetworkMonitor] Stopping network monitoring...');
 
     // 리스너 제거
-    if (page && this.requestListener) {
-      page.removeListener('request', this.requestListener);
+    if (page) {
+      if (this.requestListener) {
+        page.removeListener('request', this.requestListener);
+      }
+      if (this.webSocketListener) {
+        page.removeListener('websocket', this.webSocketListener);
+      }
     }
 
     this.isMonitoring = false;
     this.requestListener = null;
+    this.webSocketListener = null;
 
     const result = this.getResults();
     console.log(`[NetworkMonitor] Collected ${result.domains.length} domains, ${result.ips.length} IPs`);
@@ -209,6 +224,78 @@ export class NetworkMonitor {
       }
     } catch (err) {
       // DNS 조회 실패는 무시
+    }
+  }
+
+  /**
+   * WebSocket 연결을 처리합니다.
+   *
+   * @param ws - Playwright WebSocket 객체
+   */
+  private async handleWebSocket(ws: WebSocket): Promise<void> {
+    try {
+      const url = ws.url();
+
+      console.log(`[WebSocket] Connection: ${url}`);
+
+      // URL에서 도메인 추출
+      const domain = domainUtils.extractDomain(url);
+      if (!domain) return;
+
+      // localhost는 제외
+      if (domain.includes('localhost')) {
+        return;
+      }
+
+      // IP 주소인 경우 IP 목록에 추가
+      if (domainUtils.isIPAddress(domain)) {
+        this.visitedIPs.add(domain);
+        console.log(`[WebSocket IP] ${domain}`);
+        return;
+      }
+
+      // 도메인 Set에 추가
+      this.visitedDomains.add(domain);
+
+      // 도메인 상세 정보 수집
+      if (!this.domainDetails.has(domain)) {
+        const urlObj = new URL(url);
+
+        // CDN 및 서드파티 서비스 감지
+        const cdnInfo = this.detector.detectCDN(domain);
+        const thirdPartyInfo = this.detector.detectThirdPartyService(domain);
+
+        this.domainDetails.set(domain, {
+          domain: domain,
+          count: 0,
+          types: new Set<ResourceType>(['websocket']),
+          urls: new Set<string>(),
+          firstSeen: new Date().toISOString(),
+          protocol: urlObj.protocol.replace(':', '') as 'http' | 'https',
+          isCDN: !!cdnInfo,
+          cdnName: cdnInfo || undefined,
+          isThirdParty: !!thirdPartyInfo,
+          thirdPartyName: thirdPartyInfo || undefined,
+          isWebSocket: true,
+          ipv4: new Set<string>(),
+          ipv6: new Set<string>()
+        });
+
+        // DNS 조회하여 IP 수집 (백그라운드에서 실행)
+        this.resolveDNSAsync(domain);
+      }
+
+      const details = this.domainDetails.get(domain)!;
+      details.count++;
+      details.types.add('websocket');
+      details.isWebSocket = true;
+
+      const urlObj = new URL(url);
+      details.urls.add(urlObj.pathname + urlObj.search);
+
+      console.log(`[WebSocket] ${domain} (${details.count} connections)`);
+    } catch (error) {
+      // URL 파싱 에러 무시
     }
   }
 

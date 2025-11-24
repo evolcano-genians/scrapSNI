@@ -16,6 +16,7 @@ import { WebCrawler } from '../services/WebCrawler';
 import { PageInteractor } from '../services/PageInteractor';
 import { TrackingService } from '../services/TrackingService';
 import { WorkflowService } from '../services/WorkflowService';
+import { SNIWhitelistService } from '../services/SNIWhitelistService';
 
 /**
  * AppModule
@@ -41,11 +42,13 @@ import { WorkflowService } from '../services/WorkflowService';
     WebCrawler,
     PageInteractor,
     TrackingService,
-    WorkflowService
+    WorkflowService,
+    SNIWhitelistService
   ],
   exports: [
     TrackingService,
-    WorkflowService
+    WorkflowService,
+    SNIWhitelistService
   ]
 })
 export class AppModule {}

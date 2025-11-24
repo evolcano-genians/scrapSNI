@@ -20,7 +20,8 @@ import { ModuleContainer } from './di/ModuleContainer';
 import { AppModule } from './modules/app.module';
 import { TrackingService } from './services/TrackingService';
 import { WorkflowService } from './services/WorkflowService';
-import { AnalysisOptions, WorkflowStep } from './types';
+import { SNIWhitelistService } from './services/SNIWhitelistService';
+import { AnalysisOptions, WorkflowStep, SNIExportOptions } from './types';
 
 /**
  * DomainTracker 클래스
@@ -37,6 +38,7 @@ class DomainTracker {
   private container: ModuleContainer;
   private trackingService: TrackingService;
   private workflowService: WorkflowService;
+  private sniWhitelistService: SNIWhitelistService;
 
   constructor() {
     console.log('[DomainTracker] Initializing with NestJS-style architecture...');
@@ -50,6 +52,7 @@ class DomainTracker {
     // 서비스 해결 (DI)
     this.trackingService = this.container.resolve<TrackingService>('TrackingService');
     this.workflowService = this.container.resolve<WorkflowService>('WorkflowService');
+    this.sniWhitelistService = this.container.resolve<SNIWhitelistService>('SNIWhitelistService');
 
     this.setupIpcHandlers();
 
@@ -258,6 +261,48 @@ class DomainTracker {
           error: (error as Error).message,
           domains: [],
           allIPs: []
+        };
+      }
+    });
+
+    // ==================== SNI 화이트리스트 관련 ====================
+
+    /**
+     * SNI 화이트리스트 분석
+     * 수집된 도메인/IP를 분석하여 SNI 화이트리스트 생성
+     */
+    ipcMain.handle('analyze-sni-whitelist', async (_event, domains, ips) => {
+      try {
+        const result = this.sniWhitelistService.analyzeDomains(domains, ips);
+        return {
+          success: true,
+          data: result
+        };
+      } catch (error) {
+        console.error('[IPC Error] analyze-sni-whitelist:', error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    });
+
+    /**
+     * SNI 화이트리스트 export
+     * 분석된 결과를 지정된 형식으로 export
+     */
+    ipcMain.handle('export-sni-whitelist', async (_event, result, options: SNIExportOptions) => {
+      try {
+        const exported = this.sniWhitelistService.exportWhitelist(result, options);
+        return {
+          success: true,
+          data: exported
+        };
+      } catch (error) {
+        console.error('[IPC Error] export-sni-whitelist:', error);
+        return {
+          success: false,
+          error: (error as Error).message
         };
       }
     });

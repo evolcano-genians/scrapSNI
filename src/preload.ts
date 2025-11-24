@@ -8,7 +8,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { AnalysisOptions, WorkflowStep } from './types';
+import { AnalysisOptions, WorkflowStep, SNIWhitelistResult, SNIExportOptions } from './types';
 
 /**
  * ElectronAPI 인터페이스
@@ -33,6 +33,10 @@ interface ElectronAPI {
 
   // 워크플로우
   runWorkflow: (steps: WorkflowStep[]) => Promise<any>;
+
+  // SNI 화이트리스트
+  analyzeSNIWhitelist: (domains: any[], ips: string[]) => Promise<{ success: boolean; data?: SNIWhitelistResult; error?: string }>;
+  exportSNIWhitelist: (result: SNIWhitelistResult, options: SNIExportOptions) => Promise<{ success: boolean; data?: string; error?: string }>;
 
   // 파일 저장
   saveFile: (defaultPath: string, content: string) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
@@ -191,6 +195,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   runWorkflow: (steps: WorkflowStep[]) => {
     return ipcRenderer.invoke('run-workflow', steps);
+  },
+
+  // ==================== SNI 화이트리스트 관련 ====================
+
+  /**
+   * SNI 화이트리스트를 분석합니다.
+   *
+   * @param {Array} domains - 수집된 도메인 정보 배열
+   * @param {string[]} ips - 수집된 IP 주소 배열
+   * @returns {Promise} 분석 결과 (필수/선택적 도메인, 와일드카드, IP 필터링 등)
+   *
+   * @example
+   * const result = await window.electronAPI.analyzeSNIWhitelist(domains, ips);
+   * if (result.success) {
+   *   console.log('필수 도메인:', result.data.essentialDomains);
+   *   console.log('와일드카드 패턴:', result.data.wildcardPatterns);
+   *   console.log('공인 IP:', result.data.publicIPs);
+   * }
+   */
+  analyzeSNIWhitelist: (domains: any[], ips: string[]) => {
+    return ipcRenderer.invoke('analyze-sni-whitelist', domains, ips);
+  },
+
+  /**
+   * SNI 화이트리스트를 지정된 형식으로 export합니다.
+   *
+   * @param {SNIWhitelistResult} result - 분석 결과
+   * @param {SNIExportOptions} options - Export 옵션 (format, includeWildcards 등)
+   * @returns {Promise} Export된 문자열
+   *
+   * @example
+   * const exported = await window.electronAPI.exportSNIWhitelist(result, {
+   *   format: 'txt',
+   *   includeWildcards: true,
+   *   includeIPs: true,
+   *   includeOptional: false,
+   *   includeComments: true
+   * });
+   * if (exported.success) {
+   *   console.log('Export된 데이터:', exported.data);
+   * }
+   */
+  exportSNIWhitelist: (result: SNIWhitelistResult, options: SNIExportOptions) => {
+    return ipcRenderer.invoke('export-sni-whitelist', result, options);
   },
 
   // ==================== 파일 저장 관련 ====================

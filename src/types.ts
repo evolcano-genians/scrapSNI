@@ -20,13 +20,15 @@ export type ResourceType =
   | 'font'        // 폰트 파일
   | 'xhr'         // XMLHttpRequest
   | 'fetch'       // Fetch API
+  | 'websocket'   // WebSocket 연결
   | 'media'       // 비디오/오디오
+  | 'ping'        // Ping 요청
   | 'other';      // 기타
 
 /**
  * 프로토콜 타입
  */
-export type Protocol = 'http' | 'https';
+export type Protocol = 'http' | 'https' | 'ws' | 'wss';
 
 /**
  * 워크플로우 단계 타입
@@ -378,6 +380,75 @@ export interface BrowserConfig {
   userAgent: string;           // User-Agent 문자열
   defaultWaitTime: number;     // 기본 대기 시간 (밀리초)
   defaultMaxWaitTime: number;  // 기본 최대 대기 시간 (밀리초)
+}
+
+// ==================== SNI 화이트리스트 관련 타입 ====================
+
+/**
+ * 도메인 분류
+ */
+export type DomainClassification = 'essential' | 'optional' | 'excluded';
+
+/**
+ * 와일드카드 도메인 패턴
+ */
+export interface WildcardPattern {
+  pattern: string;           // 와일드카드 패턴 (예: *.example.com)
+  matchedDomains: string[];  // 매칭된 도메인 목록
+  count: number;             // 총 요청 수
+}
+
+/**
+ * 분류된 도메인 정보
+ */
+export interface ClassifiedDomain {
+  domain: string;
+  classification: DomainClassification;
+  reason: string;            // 분류 이유
+  info: DomainInfo;          // 원본 도메인 정보
+}
+
+/**
+ * SNI 화이트리스트 분석 결과
+ */
+export interface SNIWhitelistResult {
+  // 기본 정보
+  timestamp: string;
+  totalDomains: number;
+  totalIPs: number;
+
+  // 도메인 분류
+  essentialDomains: ClassifiedDomain[];    // 필수 도메인
+  optionalDomains: ClassifiedDomain[];     // 선택적 도메인
+  excludedDomains: ClassifiedDomain[];     // 제외된 도메인
+
+  // 와일드카드 패턴
+  wildcardPatterns: WildcardPattern[];
+
+  // IP 필터링 결과
+  publicIPs: string[];      // 공인 IP
+  privateIPs: string[];     // 사설 IP
+
+  // 통계
+  stats: {
+    essentialCount: number;
+    optionalCount: number;
+    excludedCount: number;
+    wildcardCount: number;
+    publicIPCount: number;
+    privateIPCount: number;
+  };
+}
+
+/**
+ * SNI 화이트리스트 export 옵션
+ */
+export interface SNIExportOptions {
+  format: 'txt' | 'json' | 'csv' | 'squid' | 'pfsense' | 'fortigate';
+  includeWildcards?: boolean;     // 와일드카드 포함 여부
+  includeIPs?: boolean;            // IP 주소 포함 여부
+  includeOptional?: boolean;       // 선택적 도메인 포함 여부
+  includeComments?: boolean;       // 주석 포함 여부
 }
 
 // ==================== 유틸리티 타입 ====================
